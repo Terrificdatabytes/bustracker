@@ -1,0 +1,2 @@
+driver_id,password_hash,name,phone,license_number,created_at
+DRIVER001,240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9,Admin Driver,9876543210,TN01234567890,2025-10-10T18:15:32.082791

@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Tracking System</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1400px;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+            margin-bottom: 20px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .mode-buttons, .route-section {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 15px 40px;
+            font-size: 18px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-info {
+            background: #2196F3;
+            color: white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        select {
+            padding: 12px 20px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            min-width: 250px;
+        }
+
+        #map {
+            height: 500px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .info-panel {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: #555;
+        }
+
+        .info-value {
+            color: #333;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ccc;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #4CAF50;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .waiting-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .waiting-list-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            margin: 8px 0;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .waiting-count {
+            background: #ff9800;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+
+        .traffic-control {
+            margin: 20px 0;
+        }
+
+        .traffic-control label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .modal-header h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .modal-header p {
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .form-toggle {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+        }
+
+        .form-toggle a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .form-toggle a:hover {
+            text-decoration: underline;
+        }
+
+        .driver-info {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .driver-info h3 {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Mode Selection -->
+        <div id="modeSelection" class="card">
+            <h1>🚌 Bus Tracking System</h1>
+            <p class="subtitle">Real-time bus location tracking with ML-powered ETA</p>
+            
+            <div id="connectionStatus" class="status-indicator">
+                <div class="status-dot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+
+            <div class="mode-buttons">
+                <button id="busMode" class="btn btn-primary">🚍 Bus Driver Mode</button>
+                <button id="passengerMode" class="btn btn-primary">👤 Passenger Mode</button>
+            </div>
+        </div>
+
+        <!-- Route Selection -->
+        <div id="routeSelection" class="card hidden">
+            <h2>Select Route</h2>
+            <div class="route-section">
+                <select id="routeSelect">
+                    <option value="">-- Select Route --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Bus Driver UI -->
+        <div id="busUI" class="card hidden">
+            <div class="driver-info">
+                <h3>Driver: <span id="driverName">Not Set</span></h3>
+                <p>Bus ID: <span id="busId">Waiting...</span></p>
+                <p>Route: <span id="busRoute"></span></p>
+            </div>
+
+            <div class="info-panel">
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="busStatus">Not Sharing</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Active Buses:</span>
+                    <span class="info-value" id="busCount">0</span>
+                </div>
+            </div>
+
+            <div class="traffic-control">
+                <label for="trafficLevel">Traffic Level: <span id="trafficValue">1.0</span></label>
+                <input type="range" id="trafficLevel" min="1" max="3" step="0.1" value="1">
+                <small style="color: #666;">1.0 = Light | 2.0 = Moderate | 3.0 = Heavy</small>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button id="startSharing" class="btn btn-success">📍 Start Sharing Location</button>
+                <button id="stopSharing" class="btn btn-danger hidden">⏹️ Stop Sharing</button>
+            </div>
+        </div>
+
+        <!-- Passenger UI -->
+        <div id="passengerUI" class="card hidden">
+            <h2>Passenger View - Route <span id="passengerRoute"></span></h2>
+
+            <div class="info-panel">
+                <div class="info-item">
+                    <span class="info-label">ETA to Next Stop:</span>
+                    <span class="info-value" id="etaMinutes">--</span> min
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Distance:</span>
+                    <span class="info-value" id="distance">--</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Nearest Stop:</span>
+                    <span class="info-value" id="nearestStop">--</span>
+                </div>
+            </div>
+
+            <div style="margin: 20px 0;">
+                <select id="waitingStopSelect">
+                    <option value="">-- Select your stop --</option>
+                </select>
+                <button id="waitingToggle" class="btn btn-info" style="margin-top: 10px;">I'm Waiting at This Stop</button>
+            </div>
+
+            <div>
+                <h3>Passengers Waiting</h3>
+                <div id="waitingList" class="waiting-list"></div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <button id="trackBus" class="btn btn-success">🔍 Track Bus</button>
+                <button id="stopTracking" class="btn btn-danger hidden">⏹️ Stop Tracking</button>
+            </div>
+
+            <div id="etaInfo" class="info-panel hidden" style="margin-top: 20px;">
+                <h3>Bus Information</h3>
+                <p>Tracking active buses on your route...</p>
+            </div>
+        </div>
+
+        <!-- Map Container -->
+        <div id="mapContainer" class="card hidden">
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Driver Authentication Modal -->
+    <div id="driverAuthModal" class="modal">
+        <div class="modal-content">
+            <!-- Login Form -->
+            <div id="loginForm">
+                <div class="modal-header">
+                    <h2>🔐 Driver Login</h2>
+                    <p>Enter your credentials to continue</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="loginDriverId">Driver ID</label>
+                    <input type="text" id="loginDriverId" placeholder="e.g., DRIVER001" autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+
+                <div class="form-actions">
+                    <button id="loginBtn" class="btn btn-primary" style="width: 100%;">Login</button>
+                </div>
+
+                <div class="form-toggle">
+                    Don't have an account? <a href="#" id="showRegister">Register here</a>
+                </div>
+
+                <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; font-size: 14px;">
+                    <strong>Default Login:</strong><br>
+                    Driver ID: DRIVER001<br>
+                    Password: admin123
+                </div>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerForm" class="hidden">
+                <div class="modal-header">
+                    <h2>📝 Driver Registration</h2>
+                    <p>Create a new driver account</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="regDriverId">Driver ID</label>
+                    <input type="text" id="regDriverId" placeholder="Choose a unique ID" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="Choose a secure password" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="regName">Full Name</label>
+                    <input type="text" id="regName" placeholder="Your full name" autocomplete="name">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPhone">Phone Number</label>
+                    <input type="tel" id="regPhone" placeholder="10-digit phone number" autocomplete="tel">
+                </div>
+
+                <div class="form-group">
+                    <label for="regLicense">License Number</label>
+                    <input type="text" id="regLicense" placeholder="Driving license number" autocomplete="off">
+                </div>
+
+                <div class="form-actions">
+                    <button id="registerBtn" class="btn btn-success" style="width: 100%;">Register</button>
+                </div>
+
+                <div class="form-toggle">
+                    Already have an account? <a href="#" id="showLogin">Login here</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
