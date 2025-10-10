@@ -133,6 +133,7 @@ STOP_COORDS = {
     {'id': 9, 'name': 'Thatankulam', 'lat': 9.9203, 'lng': 78.1421},
     {'id': 10, 'name': 'AURCM Madurai', 'lat': 9.9335, 'lng': 78.1382}
 ]
+
     
 }
 
