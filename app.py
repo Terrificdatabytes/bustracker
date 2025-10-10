@@ -119,7 +119,21 @@ STOP_COORDS = {
         {'id': 1, 'name': 'Arappalayam', 'lat': 9.9388, 'lng': 78.1212},
         {'id': 2, 'name': 'Mattuthavani', 'lat': 9.9028, 'lng': 78.1478},
         {'id': 3, 'name': 'Thiruparankundram', 'lat': 9.8751, 'lng': 78.0706},
-    ]
+    ],
+
+'48AC': [
+    {'id': 1, 'name': 'Oomachikulam', 'lat': 9.9958, 'lng': 78.1448},
+    {'id': 2, 'name': 'Periyar', 'lat': 9.9159, 'lng': 78.1117},
+    {'id': 3, 'name': 'Simmakkal', 'lat': 9.9261, 'lng': 78.1215},
+    {'id': 4, 'name': 'Goripalayam', 'lat': 9.9330, 'lng': 78.1290},
+    {'id': 5, 'name': 'Thirupalai', 'lat': 9.9825, 'lng': 78.1430},
+    {'id': 6, 'name': 'Thirunagar 2nd Stop', 'lat': 9.8887, 'lng': 78.0495},
+    {'id': 7, 'name': 'Thirunagar 3rd Stop', 'lat': 9.8805, 'lng': 78.0468},
+    {'id': 8, 'name': 'Iyer Bungalow', 'lat': 9.9670, 'lng': 78.1344},
+    {'id': 9, 'name': 'Thatankulam', 'lat': 9.9203, 'lng': 78.1421},
+    {'id': 10, 'name': 'AURCM Madurai', 'lat': 9.9335, 'lng': 78.1382}
+]
+    
 }
 
 # Store active buses with their current locations and metadata
