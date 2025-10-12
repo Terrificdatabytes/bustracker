@@ -224,7 +224,7 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
         with open('bus_locations.csv', 'a', newline='') as f:
             writer = csv.writer(f)
             if not file_exists:
-                writer.writerow(['timestamp', 'route_id', 'bus_id', 'driver_id', 'latitude', 'longitude', 
+                writer.writerow(['timestamp', 'route_id', 'bus_id', 'driver_id','user','latitude', 'longitude', 
                                'traffic_level', 'nearest_stop_id', 'distance_to_stop_km'])
             
             writer.writerow([
