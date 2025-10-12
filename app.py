@@ -137,7 +137,7 @@ STOP_COORDS = {
     {'id': 26, 'name': 'Harveypatti', 'lat': 9.8804812, 'lng': 78.0648546},
     {'id': 27, 'name': 'Amman Tiffen', 'lat': 9.8809416, 'lng': 78.0562862},
     {'id': 28, 'name': 'Thirunagar 3Rd Stop', 'lat': 9.8821005, 'lng': 78.053083}
-]
+],
 '23': [
     {'id': 1, 'name': 'Thirupallai', 'lat': 9.9720416, 'lng': 78.1394837},
     {'id': 2, 'name': 'Towards Iyer Bunglow', 'lat': 9.9718078, 'lng': 78.1392859},
