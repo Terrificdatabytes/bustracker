@@ -108,31 +108,36 @@ def static_files(filename):
 
 # Bus stop coordinates
 STOP_COORDS = {
-    '24A': [
-        {'id': 1, 'name': 'Central Station', 'lat': 9.9252, 'lng': 78.1198},
-        {'id': 2, 'name': 'Anna Nagar', 'lat': 9.9312, 'lng': 78.1245},
-        {'id': 3, 'name': 'Periyar Bus Stand', 'lat': 9.9195, 'lng': 78.1133},
-        {'id': 4, 'name': 'Meenakshi Temple', 'lat': 9.9195, 'lng': 78.1193},
-        {'id': 5, 'name': 'Railway Junction', 'lat': 9.9252, 'lng': 78.1198},
-    ],
-    '2A': [
-        {'id': 1, 'name': 'Arappalayam', 'lat': 9.9388, 'lng': 78.1212},
-        {'id': 2, 'name': 'Mattuthavani', 'lat': 9.9028, 'lng': 78.1478},
-        {'id': 3, 'name': 'Thiruparankundram', 'lat': 9.8751, 'lng': 78.0706},
-    ],
-
 '48AC': [
-    {'id': 8, 'name': 'Thirunagar 3rd Stop', 'lat': 9.8805, 'lng': 78.0468},
-    {'id': 7, 'name': 'Thirunagar 2nd Stop', 'lat': 9.8887, 'lng': 78.0495},
-    {'id': 6, 'name': 'Periyar', 'lat': 9.9159, 'lng': 78.1117},
-    {'id': 5, 'name': 'Simmakkal', 'lat': 9.9261, 'lng': 78.1215},
-    {'id': 4, 'name': 'Goripalayam', 'lat': 9.9330, 'lng': 78.1290},
-    {'id': 10, 'name': 'AURCM Madurai', 'lat': 9.9335, 'lng': 78.1382},
-    {'id': 9, 'name': 'Thatankulam', 'lat': 9.9203, 'lng': 78.1421},
-    {'id': 3, 'name': 'Iyer Bungalow', 'lat': 9.9670, 'lng': 78.1344},
-    {'id': 2, 'name': 'Thirupalai', 'lat': 9.9825, 'lng': 78.1430},
-    {'id': 1, 'name': 'Oomachikulam', 'lat': 9.9958, 'lng': 78.1448}
-],
+    {'id': 1, 'name': 'Thirupallai', 'lat': 9.9720416, 'lng': 78.1394837},
+    {'id': 2, 'name': 'Towards Iyer Bunglow', 'lat': 9.9718078, 'lng': 78.1392859},
+    {'id': 3, 'name': 'Iyer Bungalow', 'lat': 9.9673249, 'lng': 78.1366866},
+    {'id': 4, 'name': 'Reserve Line', 'lat': 9.9556417, 'lng': 78.1326311},
+    {'id': 5, 'name': 'Race Course', 'lat': 9.9437216, 'lng': 78.1355206},
+    {'id': 6, 'name': 'Pandian Hotel', 'lat': 9.9387971, 'lng': 78.1366364},
+    {'id': 7, 'name': 'Thallakulam', 'lat': 9.9343902, 'lng': 78.1339649},
+    {'id': 8, 'name': 'Tamukam', 'lat': 9.9310613, 'lng': 78.1319157},
+    {'id': 9, 'name': 'Goripalaiyam', 'lat': 9.9291406, 'lng': 78.1292637},
+    {'id': 10, 'name': 'A.V. Bridge Endpoint', 'lat': 9.9245982, 'lng': 78.124677},
+    {'id': 11, 'name': 'Towards Simakkal', 'lat': 9.9239324, 'lng': 78.1240654},
+    {'id': 12, 'name': 'Simakkal', 'lat': 9.9245618, 'lng': 78.1223503},
+    {'id': 13, 'name': 'Towards Setupathi School', 'lat': 9.9247943, 'lng': 78.1176725},
+    {'id': 14, 'name': 'Settupathi School', 'lat': 9.9240122, 'lng': 78.1134239},
+    {'id': 15, 'name': 'Railway Junction', 'lat': 9.9178614, 'lng': 78.1121365},
+    {'id': 16, 'name': 'Reaching Preiyar', 'lat': 9.9161166, 'lng': 78.1127373},
+    {'id': 17, 'name': 'Periyar Bus Stand', 'lat': 9.915244, 'lng': 78.11158429999999},
+    {'id': 18, 'name': 'Crime Branch', 'lat': 9.9117515, 'lng': 78.1118909},
+    {'id': 19, 'name': 'Tamilnadu Polytechnic', 'lat': 9.9094264, 'lng': 78.1098096},
+    {'id': 20, 'name': 'Vasantha Nagar', 'lat': 9.9060655, 'lng': 78.0991451},
+    {'id': 21, 'name': 'Pallanganatham', 'lat': 9.9015843, 'lng': 78.0948536},
+    {'id': 22, 'name': 'Paikara', 'lat': 9.8953204, 'lng': 78.0858491},
+    {'id': 23, 'name': 'Pasumalai', 'lat': 9.8937178, 'lng': 78.0789968},
+    {'id': 24, 'name': 'Mannar College', 'lat': 9.8929532, 'lng': 78.0770855},
+    {'id': 25, 'name': 'Towards Thiruparakundram', 'lat': 9.886379, 'lng': 78.0741243},
+    {'id': 26, 'name': 'Harveypatti', 'lat': 9.8804812, 'lng': 78.0648546},
+    {'id': 27, 'name': 'Amman Tiffen', 'lat': 9.8809416, 'lng': 78.0562862},
+    {'id': 28, 'name': 'Thirunagar 3Rd Stop', 'lat': 9.8821005, 'lng': 78.053083}
+]
 '23': [
     {'id': 1, 'name': 'Thirupallai', 'lat': 9.9720416, 'lng': 78.1394837},
     {'id': 2, 'name': 'Towards Iyer Bunglow', 'lat': 9.9718078, 'lng': 78.1392859},
