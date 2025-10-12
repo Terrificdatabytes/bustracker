@@ -11,6 +11,7 @@ import os
 from collections import defaultdict
 import uuid
 import hashlib
+import shutil
 
 sys.modules['__main__'] = sys.modules['train']
 app = Flask(__name__)
@@ -243,12 +244,24 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
                 nearest_stop_id,
                 f"{distance_km:.3f}"
             ])
+            source_file = "/content/bustracker/bus_locations.csv"
+            destination_file = "/content/drive/MyDrive/bus_locations.csv"
+            try:
+                shutil.copyfile(source_file, destination_file)
+                print(f"File '{source_file}' copied to '{destination_file}' successfully.")
+            except FileNotFoundError:
+                print(f"Error: Source file '{source_file}' not found.")
+            except shutil.SameFileError:
+                print("Error: Source and destination are the same file.")
+            except Exception as e:
+                print(f"An error occurred: {e}")
         
         # Auto-cleanup if file exceeds 9 MB
         if os.path.getsize('bus_locations.csv') > 9 * 1024 * 1024:
             cleanup_location_history()
     except Exception as e:
         print(f"Location logging error: {e}")
+
 
 def cleanup_location_history():
     """Keep most recent 80% of records"""
