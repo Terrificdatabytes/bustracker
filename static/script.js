@@ -14,6 +14,7 @@ let myBusId = null;
 let updateInterval = null;
 let driverInfo = null;
 let isAuthenticated = false;
+let isTracking = false;
 
 // DOM Elements
 const modeSelection = document.getElementById('modeSelection');
@@ -44,7 +45,7 @@ function initSocket() {
     });
     
     socket.on('connect', () => {
-        console.log('Connected to server');
+        console.log('✓ Connected to server');
         statusText.textContent = 'Connected';
         statusDot.classList.add('connected');
         
@@ -65,7 +66,7 @@ function initSocket() {
     });
     
     socket.on('disconnect', () => {
-        console.log('Disconnected from server');
+        console.log('✗ Disconnected from server');
         statusText.textContent = 'Disconnected';
         statusDot.classList.remove('connected');
     });
@@ -78,7 +79,7 @@ function initSocket() {
     socket.on('authentication_required', handleAuthenticationRequired);
     socket.on('bus_id_assigned', (data) => {
         myBusId = data.bus_id;
-        console.log('Assigned bus ID:', myBusId);
+        console.log('✓ Assigned bus ID:', myBusId);
         document.getElementById('busId').textContent = myBusId;
         if (data.driver_name) {
             document.getElementById('driverName').textContent = data.driver_name;
@@ -91,6 +92,7 @@ function initSocket() {
     socket.on('bus_count_update', handleBusCountUpdate);
     socket.on('waiting_update', handleWaitingUpdate);
     socket.on('waiting_stats', handleWaitingStats);
+    socket.on('bus_info_update', handleBusInfoUpdate);
 }
 
 function handleDriverAuthentication(data) {
@@ -99,7 +101,7 @@ function handleDriverAuthentication(data) {
         driverInfo.driver_id = data.driver.driver_id;
         driverInfo.name = data.driver.name;
         driverAuthModal.style.display = 'none';
-        console.log('Driver authenticated successfully');
+        console.log('✓ Driver authenticated successfully');
         
         if (currentRoute) {
             socket.emit('join_route', { route_id: currentRoute, mode: 'bus' });
@@ -119,6 +121,14 @@ function showDriverAuthModal() {
     driverAuthModal.style.display = 'flex';
     loginForm.classList.remove('hidden');
     registerForm.classList.add('hidden');
+}
+
+function handleBusInfoUpdate(data) {
+    // Update driver panel with real-time info
+    document.getElementById('busSpeed').textContent = data.speed;
+    document.getElementById('nearestStopDriver').textContent = data.nearest_stop;
+    document.getElementById('distanceToStop').textContent = data.distance_to_stop;
+    document.getElementById('etaToStop').textContent = data.eta_to_stop;
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -220,7 +230,14 @@ function initMap(centerLat = 9.9252, centerLng = 78.1198) {
         map.remove();
     }
     
-    map = L.map('map').setView([centerLat, centerLng], 13);
+    map = L.map('map', {
+        dragging: true,
+        scrollWheelZoom: true,
+        doubleClickZoom: true,
+        boxZoom: true,
+        keyboard: true,
+        zoomControl: true
+    }).setView([centerLat, centerLng], 13);
     
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
@@ -364,8 +381,12 @@ document.getElementById('startSharing').addEventListener('click', () => {
     document.getElementById('busStatus').textContent = 'Sharing Location (Live)';
     document.getElementById('busStatus').style.color = '#4CAF50';
     
+    // Show driver stats panel
+    document.getElementById('driverStats').classList.remove('hidden');
+    
     shareLocation();
     
+    // Update every 1 second with proper timing
     trackingInterval = setInterval(shareLocation, 1000);
 });
 
@@ -383,6 +404,7 @@ document.getElementById('stopSharing').addEventListener('click', () => {
     document.getElementById('startSharing').classList.remove('hidden');
     document.getElementById('busStatus').textContent = 'Stopped';
     document.getElementById('busStatus').style.color = '#666';
+    document.getElementById('driverStats').classList.add('hidden');
     
     if (busMarkers[myBusId]) {
         map.removeLayer(busMarkers[myBusId]);
@@ -407,7 +429,10 @@ function shareLocation() {
             
             updateBusMarker(myBusId, latitude, longitude, true);
             
-            map.setView([latitude, longitude], map.getZoom());
+            // Only auto-center if not manually panned
+            if (!map._userPanned) {
+                map.setView([latitude, longitude], map.getZoom());
+            }
         },
         (error) => {
             console.error('Geolocation error:', error);
@@ -424,9 +449,13 @@ function shareLocation() {
     );
 }
 
+// Track if user manually panned the map
+map && map.on('dragstart', function() {
+    map._userPanned = true;
+    setTimeout(() => { map._userPanned = false; }, 10000); // Reset after 10s
+});
+
 function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null) {
-    console.log(`updateBusMarker called: ${busId}, lat: ${lat}, lng: ${lng}, map exists: ${!!map}`);
-    
     if (!map) {
         console.error('Map not initialized!');
         return;
@@ -437,7 +466,6 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null) {
     
     if (busMarkers[busId]) {
         busMarkers[busId].setLatLng([lat, lng]);
-        console.log(`Updated existing marker for bus ${busId}`);
     } else {
         busMarkers[busId] = L.marker([lat, lng], {
             icon: L.divIcon({
@@ -455,13 +483,10 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null) {
                 <p>${popupText}</p>
             </div>
         `);
-        
-        console.log(`Created new marker for bus ${busId}`);
     }
     
-    if (Object.keys(busMarkers).length === 1) {
+    if (Object.keys(busMarkers).length === 1 && !map._userPanned) {
         map.setView([lat, lng], 14);
-        console.log('Panned map to first bus location');
     }
 }
 
@@ -469,11 +494,9 @@ function removeBusMarker(busId) {
     if (busMarkers[busId]) {
         map.removeLayer(busMarkers[busId]);
         delete busMarkers[busId];
-        console.log(`Removed bus marker for ${busId}`);
     }
 }
 
-// Display messages based on bus status
 function showMessage(status, route) {
     const etaInfoDiv = document.getElementById('etaInfo');
     const trackingMsg = etaInfoDiv ? etaInfoDiv.querySelector('p') : null;
@@ -490,11 +513,6 @@ function showMessage(status, route) {
     if (trackingMsg) {
         trackingMsg.textContent = messages[status] || messages.loading;
         trackingMsg.style.display = 'block';
-        trackingMsg.style.fontSize = '16px';
-        trackingMsg.style.fontWeight = 'bold';
-        trackingMsg.style.padding = '15px';
-        trackingMsg.style.textAlign = 'center';
-        trackingMsg.style.color = status === 'nobus' ? '#d32f2f' : status === 'error' ? '#f57c00' : '#388e3c';
     }
     
     if (status === 'found' || status === 'multiple') {
@@ -508,13 +526,10 @@ function showMessage(status, route) {
     }
 }
 
-// Track Bus (Passenger Mode)
 const trackBusBtn = document.getElementById('trackBus');
 if (trackBusBtn) {
-    console.log('Track Bus button found and listener attached');
     trackBusBtn.addEventListener('click', () => {
         console.log('=== TRACK BUS CLICKED ===');
-        console.log('Current route:', currentRoute);
         
         if (!map) {
             alert('Map not initialized. Please refresh the page.');
@@ -526,25 +541,21 @@ if (trackBusBtn) {
             return;
         }
         
+        isTracking = true;
         trackBusBtn.classList.add('hidden');
         document.getElementById('stopTracking').classList.remove('hidden');
         document.getElementById('etaInfo').classList.remove('hidden');
         
         showMessage('loading', currentRoute);
         
-        console.log('UI updated, now loading buses...');
-        
         loadActiveBuses();
         
         updateInterval = setInterval(loadActiveBuses, 2000);
-        console.log('Update interval started');
     });
-} else {
-    console.error('ERROR: Track Bus button not found in DOM!');
 }
 
-// Stop Tracking
 document.getElementById('stopTracking').addEventListener('click', () => {
+    isTracking = false;
     document.getElementById('stopTracking').classList.add('hidden');
     document.getElementById('trackBus').classList.remove('hidden');
     document.getElementById('etaInfo').classList.add('hidden');
@@ -562,21 +573,13 @@ document.getElementById('stopTracking').addEventListener('click', () => {
     busMarkers = {};
 });
 
-// Load active buses for passenger
 async function loadActiveBuses() {
     try {
         const url = `/api/active_buses/${currentRoute}`;
-        console.log('Fetching active buses from:', url);
-        
         const response = await fetch(url);
         const data = await response.json();
         
-        console.log('Active buses response:', data);
-        console.log('Number of buses:', data.buses ? data.buses.length : 0);
-        
         if (data.buses && data.buses.length > 0) {
-            console.log(`Found ${data.buses.length} active bus(es) on Route ${currentRoute}`);
-            
             if (data.buses.length === 1) {
                 showMessage('found', currentRoute);
             } else {
@@ -586,30 +589,18 @@ async function loadActiveBuses() {
             const activeBusIds = [];
             
             data.buses.forEach(bus => {
-                console.log('Processing bus:', {
-                    id: bus.bus_id,
-                    lat: bus.lat,
-                    lng: bus.lng,
-                    driver: bus.driver_name,
-                    traffic: bus.traffic_level
-                });
-                
                 activeBusIds.push(bus.bus_id);
                 updateBusMarker(bus.bus_id, bus.lat, bus.lng, false, bus.driver_name);
             });
             
             Object.keys(busMarkers).forEach(busId => {
                 if (!activeBusIds.includes(busId)) {
-                    console.log('Removing inactive bus:', busId);
                     removeBusMarker(busId);
                 }
             });
             
             updateClosestBusETA();
-            
-            console.log('Bus markers on map:', Object.keys(busMarkers));
         } else {
-            console.log('No active buses found on Route:', currentRoute);
             showMessage('nobus', currentRoute);
             
             Object.keys(busMarkers).forEach(busId => {
@@ -619,10 +610,12 @@ async function loadActiveBuses() {
             const etaMinutesEl = document.getElementById('etaMinutes');
             const distanceEl = document.getElementById('distance');
             const nearestStopEl = document.getElementById('nearestStop');
+            const busSpeedEl = document.getElementById('busSpeedPassenger');
             
             if (etaMinutesEl) etaMinutesEl.textContent = '--';
             if (distanceEl) distanceEl.textContent = '-- km';
             if (nearestStopEl) nearestStopEl.textContent = 'No buses active';
+            if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
         }
     } catch (error) {
         console.error('Error loading active buses:', error);
@@ -630,7 +623,6 @@ async function loadActiveBuses() {
     }
 }
 
-// Waiting Toggle
 document.getElementById('waitingToggle').addEventListener('click', function() {
     const stopSelect = document.getElementById('waitingStopSelect');
     const stopId = parseInt(stopSelect.value);
@@ -662,57 +654,47 @@ document.getElementById('waitingToggle').addEventListener('click', function() {
 });
 
 function handleBusUpdate(data) {
-    console.log('Bus update received:', data.bus_id);
-    
     updateBusMarker(data.bus_id, data.lat, data.lng, false);
     
-    if (document.getElementById('trackBus').classList.contains('hidden')) {
+    if (isTracking) {
         updateClosestBusETA();
     }
 }
 
 function handleAllBusesUpdate(data) {
-    console.log('All buses update:', data);
-    
     if (data.buses && data.buses.length > 0) {
         data.buses.forEach(bus => {
             updateBusMarker(bus.bus_id, bus.lat, bus.lng, false);
         });
         
-        updateClosestBusETA();
+        if (isTracking) {
+            updateClosestBusETA();
+        }
     }
 }
 
 function handleBusRemoved(data) {
-    console.log('Bus removed:', data.bus_id);
     removeBusMarker(data.bus_id);
-    updateClosestBusETA();
+    if (isTracking) {
+        updateClosestBusETA();
+    }
 }
 
 function updateClosestBusETA() {
-    console.log('=== updateClosestBusETA called ===');
-    
     const etaMinutesEl = document.getElementById('etaMinutes');
     const distanceEl = document.getElementById('distance');
     const nearestStopEl = document.getElementById('nearestStop');
+    const busSpeedEl = document.getElementById('busSpeedPassenger');
     const etaInfoDiv = document.getElementById('etaInfo');
     const etaDisplay = etaInfoDiv ? etaInfoDiv.querySelector('.eta-display') : null;
     
-    console.log('ETA elements found:', {
-        etaMinutes: !!etaMinutesEl,
-        distance: !!distanceEl,
-        nearestStop: !!nearestStopEl,
-        etaDisplay: !!etaDisplay
-    });
-    
     const allBusIds = Object.keys(busMarkers);
-    console.log('Active bus markers:', allBusIds.length, allBusIds);
     
     if (allBusIds.length === 0) {
-        console.log('No buses to track');
         if (etaMinutesEl) etaMinutesEl.textContent = '--';
         if (distanceEl) distanceEl.textContent = '-- km';
         if (nearestStopEl) nearestStopEl.textContent = 'No buses active';
+        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
         if (etaDisplay) etaDisplay.style.display = 'none';
         return;
     }
@@ -725,44 +707,33 @@ function updateClosestBusETA() {
     const selectedStopId = parseInt(waitingStopSelect.value);
     const stops = window.stopsData[currentRoute];
     
-    console.log('Stops data:', stops ? `${stops.length} stops` : 'null');
-    console.log('Selected stop ID:', selectedStopId);
-    
     let referenceStop = stops && stops.length > 0 ? stops[0] : null;
     
     if (selectedStopId && stops) {
         const userStop = stops.find(s => s.id === selectedStopId);
         if (userStop) {
             referenceStop = userStop;
-            console.log('Using user-selected stop:', referenceStop.name);
         }
     }
     
     if (!referenceStop) {
-        console.error('No reference stop found!');
         if (etaMinutesEl) etaMinutesEl.textContent = '--';
         if (distanceEl) distanceEl.textContent = '-- km';
         if (nearestStopEl) nearestStopEl.textContent = 'Stop data unavailable';
+        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
         if (etaDisplay) etaDisplay.style.display = 'none';
         return;
     }
-    
-    console.log('Using reference stop:', referenceStop.name, `(${referenceStop.lat}, ${referenceStop.lng})`);
     
     let closestBus = null;
     let minDistance = Infinity;
     
     allBusIds.forEach(busId => {
         const marker = busMarkers[busId];
-        if (!marker) {
-            console.log('Warning: marker not found for', busId);
-            return;
-        }
+        if (!marker) return;
         
         const latlng = marker.getLatLng();
         const dist = calculateDistance(referenceStop.lat, referenceStop.lng, latlng.lat, latlng.lng);
-        
-        console.log(`Bus ${busId.substring(0, 8)}: ${dist.toFixed(2)} km from ${referenceStop.name}`);
         
         if (dist < minDistance) {
             minDistance = dist;
@@ -774,31 +745,34 @@ function updateClosestBusETA() {
         const trafficLevel = 1.5;
         const etaMinutes = predictETA(minDistance, trafficLevel);
         
-        console.log(`✅ Closest bus: ${closestBus.substring(0, 8)}`);
-        console.log(`✅ Distance: ${minDistance.toFixed(2)} km`);
-        console.log(`✅ ETA: ${Math.round(etaMinutes)} minutes`);
+        // Get speed from active buses data
+        fetch(`/api/active_buses/${currentRoute}`)
+            .then(res => res.json())
+            .then(data => {
+                const busData = data.buses.find(b => b.bus_id === closestBus);
+                if (busData && busSpeedEl) {
+                    busSpeedEl.textContent = `${busData.speed} km/h`;
+                }
+            });
         
         if (etaMinutesEl) {
             etaMinutesEl.textContent = Math.round(etaMinutes);
-            console.log('✅ Updated etaMinutes to:', etaMinutesEl.textContent);
         }
         if (distanceEl) {
             distanceEl.textContent = `${minDistance.toFixed(2)} km`;
-            console.log('✅ Updated distance to:', distanceEl.textContent);
         }
         if (nearestStopEl) {
             nearestStopEl.textContent = referenceStop.name;
-            console.log('✅ Updated nearestStop to:', nearestStopEl.textContent);
         }
         
         if (etaDisplay) {
             etaDisplay.style.display = 'grid';
         }
     } else {
-        console.log('Could not determine closest bus');
         if (etaMinutesEl) etaMinutesEl.textContent = '--';
         if (distanceEl) distanceEl.textContent = '-- km';
         if (nearestStopEl) nearestStopEl.textContent = 'Calculating...';
+        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
     }
 }
 
@@ -813,11 +787,9 @@ function handleBusCountUpdate(data) {
     if (busCountEl) {
         busCountEl.textContent = data.count;
     }
-    console.log(`Active buses on route ${data.route_id}: ${data.count}`);
 }
 
 function handleWaitingUpdate(data) {
-    console.log('Waiting update:', data);
     loadWaitingStats();
 }
 
@@ -903,7 +875,7 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-console.log('=== Initializing Bus Tracking System ===');
+console.log('=== Initializing Enhanced Bus Tracking System ===');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
@@ -920,8 +892,8 @@ if (document.readyState === 'loading') {
 
 window.addEventListener('load', () => {
     console.log('=== Page Fully Loaded ===');
-    console.log('All elements loaded');
-    console.log('Track Bus button exists:', !!document.getElementById('trackBus'));
-    console.log('Passenger UI exists:', !!document.getElementById('passengerUI'));
-    console.log('Map container exists:', !!document.getElementById('map'));
+    console.log('✓ All elements loaded');
+    console.log('✓ Track Bus button exists:', !!document.getElementById('trackBus'));
+    console.log('✓ Passenger UI exists:', !!document.getElementById('passengerUI'));
+    console.log('✓ Map container exists:', !!document.getElementById('map'));
 });
