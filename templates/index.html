@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
     <style>
         * {
             margin: 0;
@@ -14,82 +16,144 @@
             box-sizing: border-box;
         }
 
+        :root {
+            --md-primary: #6750A4;
+            --md-on-primary: #FFFFFF;
+            --md-primary-container: #EADDFF;
+            --md-on-primary-container: #21005D;
+            --md-secondary: #625B71;
+            --md-on-secondary: #FFFFFF;
+            --md-secondary-container: #E8DEF8;
+            --md-on-secondary-container: #1D192B;
+            --md-tertiary: #7D5260;
+            --md-on-tertiary: #FFFFFF;
+            --md-error: #BA1A1A;
+            --md-on-error: #FFFFFF;
+            --md-surface: #FFFBFE;
+            --md-on-surface: #1C1B1F;
+            --md-surface-variant: #E7E0EC;
+            --md-on-surface-variant: #49454F;
+            --md-outline: #79747E;
+            --md-shadow: rgba(0, 0, 0, 0.3);
+            --md-elevation-1: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+            --md-elevation-2: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+            --md-elevation-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            background-attachment: fixed;
+            color: var(--md-on-surface);
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            padding: 16px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 30%, rgba(103, 80, 164, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 70%, rgba(125, 82, 96, 0.15) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
         }
 
         .container {
-            width: 100%;
             max-width: 1400px;
-            padding: 20px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
         }
 
         .card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            padding: 40px;
-            margin-bottom: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card:hover {
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+            transform: translateY(-2px);
         }
 
         h1 {
             text-align: center;
-            color: #333;
-            margin-bottom: 10px;
+            color: var(--md-primary);
+            margin-bottom: 8px;
             font-size: 2.5em;
+            font-weight: 500;
+            letter-spacing: -0.5px;
         }
 
         .subtitle {
             text-align: center;
-            color: #666;
-            margin-bottom: 30px;
+            color: var(--md-on-surface-variant);
+            margin-bottom: 24px;
+            font-size: 1em;
         }
 
         .mode-buttons, .route-section {
             display: flex;
-            gap: 20px;
+            gap: 16px;
             justify-content: center;
             flex-wrap: wrap;
         }
 
         .btn {
-            padding: 15px 40px;
-            font-size: 18px;
+            padding: 14px 24px;
+            font-size: 14px;
+            font-weight: 500;
             border: none;
-            border-radius: 10px;
+            border-radius: 20px;
             cursor: pointer;
-            transition: all 0.3s;
-            font-weight: bold;
+            transition: all 0.2s ease;
+            box-shadow: var(--md-elevation-1);
             text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .btn:hover {
+            box-shadow: var(--md-elevation-2);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            background: var(--md-primary);
+            color: var(--md-on-primary);
         }
 
         .btn-success {
-            background: #4CAF50;
+            background: #2E7D32;
             color: white;
         }
 
         .btn-danger {
-            background: #f44336;
-            color: white;
+            background: var(--md-error);
+            color: var(--md-on-error);
         }
 
         .btn-info {
-            background: #2196F3;
+            background: #0277BD;
             color: white;
         }
 
@@ -98,31 +162,41 @@
         }
 
         select {
-            padding: 12px 20px;
-            font-size: 16px;
-            border: 2px solid #ddd;
-            border-radius: 10px;
+            padding: 12px 16px;
+            font-size: 14px;
+            border: 1px solid var(--md-outline);
+            border-radius: 8px;
             min-width: 250px;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            font-family: 'Roboto', sans-serif;
+            transition: border-color 0.2s;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--md-primary);
+            border-width: 2px;
         }
 
         #map {
             height: 500px;
-            border-radius: 15px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            border-radius: 12px;
+            box-shadow: var(--md-elevation-1);
         }
 
         .info-panel {
-            background: #f5f5f5;
-            padding: 20px;
-            border-radius: 10px;
-            margin: 20px 0;
+            background: var(--md-surface-variant);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
         }
 
         .info-item {
             display: flex;
             justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #ddd;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--md-outline);
         }
 
         .info-item:last-child {
@@ -130,35 +204,36 @@
         }
 
         .info-label {
-            font-weight: bold;
-            color: #555;
+            font-weight: 500;
+            color: var(--md-on-surface-variant);
         }
 
         .info-value {
-            color: #333;
+            color: var(--md-on-surface);
+            font-weight: 500;
         }
 
         .status-indicator {
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
-            margin: 20px 0;
-            padding: 10px;
-            background: #f5f5f5;
-            border-radius: 10px;
+            gap: 12px;
+            margin: 16px 0;
+            padding: 12px;
+            background: var(--md-surface-variant);
+            border-radius: 24px;
         }
 
         .status-dot {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background: #ccc;
+            background: #FFC107;
             animation: pulse 2s infinite;
         }
 
         .status-dot.connected {
-            background: #4CAF50;
+            background: #2E7D32;
         }
 
         @keyframes pulse {
@@ -176,47 +251,66 @@
             justify-content: space-between;
             padding: 12px;
             margin: 8px 0;
-            background: white;
+            background: var(--md-surface);
             border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: var(--md-elevation-1);
+            border-left: 4px solid var(--md-primary);
         }
 
         .waiting-count {
-            background: #ff9800;
-            color: white;
+            background: var(--md-primary);
+            color: var(--md-on-primary);
             padding: 4px 12px;
-            border-radius: 20px;
-            font-weight: bold;
+            border-radius: 16px;
+            font-weight: 500;
+            font-size: 12px;
         }
 
         .traffic-control {
-            margin: 20px 0;
+            margin: 16px 0;
         }
 
         .traffic-control label {
             display: block;
-            margin-bottom: 10px;
-            font-weight: bold;
+            margin-bottom: 12px;
+            font-weight: 500;
+            color: var(--md-on-surface);
         }
 
         input[type="range"] {
             width: 100%;
-            height: 8px;
-            border-radius: 5px;
-            background: #ddd;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--md-surface-variant);
             outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--md-primary);
+            cursor: pointer;
+            box-shadow: var(--md-elevation-1);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--md-primary);
+            cursor: pointer;
+            border: none;
+            box-shadow: var(--md-elevation-1);
         }
 
         .grid-2 {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-
-        @media (max-width: 768px) {
-            .grid-2 {
-                grid-template-columns: 1fr;
-            }
+            gap: 16px;
         }
 
         /* Modal Styles */
@@ -227,77 +321,84 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 10000;
             align-items: center;
             justify-content: center;
         }
 
         .modal-content {
-            background: white;
-            padding: 40px;
-            border-radius: 20px;
+            background: var(--md-surface);
+            padding: 32px;
+            border-radius: 28px;
             max-width: 500px;
             width: 90%;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            box-shadow: var(--md-elevation-3);
         }
 
         .modal-header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 24px;
         }
 
         .modal-header h2 {
-            color: #333;
-            margin-bottom: 10px;
+            color: var(--md-on-surface);
+            margin-bottom: 8px;
+            font-weight: 500;
         }
 
         .modal-header p {
-            color: #666;
+            color: var(--md-on-surface-variant);
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
         }
 
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            font-weight: bold;
-            color: #555;
+            font-weight: 500;
+            color: var(--md-on-surface);
+            font-size: 14px;
         }
 
         .form-group input {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #ddd;
+            padding: 14px 16px;
+            border: 1px solid var(--md-outline);
             border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            font-size: 14px;
+            font-family: 'Roboto', sans-serif;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            transition: border-color 0.2s;
         }
 
         .form-group input:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--md-primary);
+            border-width: 2px;
         }
 
         .form-actions {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            margin-top: 30px;
+            gap: 12px;
+            margin-top: 24px;
         }
 
         .form-toggle {
             text-align: center;
-            margin-top: 20px;
-            color: #666;
+            margin-top: 16px;
+            color: var(--md-on-surface-variant);
+            font-size: 14px;
         }
 
         .form-toggle a {
-            color: #667eea;
+            color: var(--md-primary);
             text-decoration: none;
-            font-weight: bold;
+            font-weight: 500;
         }
 
         .form-toggle a:hover {
@@ -305,15 +406,111 @@
         }
 
         .driver-info {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            margin-bottom: 20px;
+            background: linear-gradient(135deg, var(--md-primary) 0%, var(--md-tertiary) 100%);
+            color: var(--md-on-primary);
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            box-shadow: var(--md-elevation-2);
         }
 
         .driver-info h3 {
-            margin-bottom: 5px;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .driver-info p {
+            margin: 4px 0;
+            opacity: 0.95;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .stat-card {
+            background: var(--md-primary-container);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--md-on-primary-container);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--md-on-primary-container);
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            margin: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+            
+            #map {
+                height: 350px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        /* Leaflet popup styling */
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            box-shadow: var(--md-elevation-2);
+        }
+
+        .custom-popup {
+            text-align: center;
+            padding: 8px;
+        }
+
+        .custom-popup h4 {
+            margin-bottom: 4px;
+            color: var(--md-on-surface);
+        }
+
+        /* Default credentials info */
+        .info-box {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--md-secondary-container);
+            border-radius: 12px;
+            font-size: 13px;
+            color: var(--md-on-secondary-container);
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 8px;
         }
     </style>
 </head>
@@ -322,7 +519,7 @@
         <!-- Mode Selection -->
         <div id="modeSelection" class="card">
             <h1>🚌 Bus Tracking System</h1>
-            <p class="subtitle">Real-time bus location tracking with ML-powered ETA</p>
+            <p class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</p>
             
             <div id="connectionStatus" class="status-indicator">
                 <div class="status-dot"></div>
@@ -330,8 +527,14 @@
             </div>
 
             <div class="mode-buttons">
-                <button id="busMode" class="btn btn-primary">🚍 Bus Driver Mode</button>
-                <button id="passengerMode" class="btn btn-primary">👤 Passenger Mode</button>
+                <button id="busMode" class="btn btn-primary">
+                    <span class="material-symbols-outlined">directions_bus</span>
+                    Bus Driver Mode
+                </button>
+                <button id="passengerMode" class="btn btn-primary">
+                    <span class="material-symbols-outlined">person</span>
+                    Passenger Mode
+                </button>
             </div>
         </div>
 
@@ -348,9 +551,9 @@
         <!-- Bus Driver UI -->
         <div id="busUI" class="card hidden">
             <div class="driver-info">
-                <h3>Driver: <span id="driverName">Not Set</span></h3>
-                <p>Bus ID: <span id="busId">Waiting...</span></p>
-                <p>Route: <span id="busRoute"></span></p>
+                <h3>👤 Driver: <span id="driverName">Not Set</span></h3>
+                <p>🚌 Bus ID: <span id="busId">Waiting...</span></p>
+                <p>🛣️ Route: <span id="busRoute"></span></p>
             </div>
 
             <div class="info-panel">
@@ -359,66 +562,123 @@
                     <span class="info-value" id="busStatus">Not Sharing</span>
                 </div>
                 <div class="info-item">
-                    <span class="info-label">Active Buses:</span>
+                    <span class="info-label">Active Buses on Route:</span>
                     <span class="info-value" id="busCount">0</span>
                 </div>
             </div>
 
-            <div class="traffic-control">
-                <label for="trafficLevel">Traffic Level: <span id="trafficValue">1.0</span></label>
-                <input type="range" id="trafficLevel" min="1" max="3" step="0.1" value="1">
-                <small style="color: #666;">1.0 = Light | 2.0 = Moderate | 3.0 = Heavy</small>
+            <!-- Driver Real-time Stats -->
+            <div id="driverStats" class="hidden">
+                <h3 style="margin: 16px 0 12px 0;">📊 Real-time Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Speed</div>
+                        <div class="stat-value"><span id="busSpeed">0</span> km/h</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Next Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="nearestStopDriver">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value"><span id="distanceToStop">--</span> km</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaToStop">--</span> min</div>
+                    </div>
+                </div>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button id="startSharing" class="btn btn-success">📍 Start Sharing Location</button>
-                <button id="stopSharing" class="btn btn-danger hidden">⏹️ Stop Sharing</button>
+            <div class="traffic-control">
+                <label for="trafficLevel">
+                    🚦 Traffic Level: <strong><span id="trafficValue">1.0</span></strong>
+                </label>
+                <input type="range" id="trafficLevel" min="1" max="3" step="0.1" value="1">
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--md-on-surface-variant);">
+                    <span>Light</span>
+                    <span>Moderate</span>
+                    <span>Heavy</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;">
+                <button id="startSharing" class="btn btn-success">
+                    <span class="material-symbols-outlined">location_on</span>
+                    Start Sharing Location
+                </button>
+                <button id="stopSharing" class="btn btn-danger hidden">
+                    <span class="material-symbols-outlined">stop_circle</span>
+                    Stop Sharing
+                </button>
             </div>
         </div>
 
         <!-- Passenger UI -->
         <div id="passengerUI" class="card hidden">
-            <h2>Passenger View - Route <span id="passengerRoute"></span></h2>
+            <h2>🚏 Passenger View - Route <span id="passengerRoute"></span></h2>
 
             <div class="info-panel">
-                <div class="info-item">
-                    <span class="info-label">ETA to Next Stop:</span>
-                    <span class="info-value" id="etaMinutes">--</span> min
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Distance:</span>
-                    <span class="info-value" id="distance">--</span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">Nearest Stop:</span>
-                    <span class="info-value" id="nearestStop">--</span>
+                <div class="stats-grid" style="margin: 0;">
+                    <div class="stat-card">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaMinutes">--</span> min</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="distance">--</span></div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Nearest Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="nearestStop">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Bus Speed</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="busSpeedPassenger">--</span></div>
+                    </div>
                 </div>
             </div>
 
             <div style="margin: 20px 0;">
-                <select id="waitingStopSelect">
+                <label style="font-weight: 500; margin-bottom: 8px; display: block;">Select Your Stop:</label>
+                <select id="waitingStopSelect" style="margin-bottom: 12px;">
                     <option value="">-- Select your stop --</option>
                 </select>
-                <button id="waitingToggle" class="btn btn-info" style="margin-top: 10px;">I'm Waiting at This Stop</button>
+                <button id="waitingToggle" class="btn btn-info">
+                    <span class="material-symbols-outlined">pan_tool</span>
+                    I'm Waiting at This Stop
+                </button>
             </div>
 
             <div>
-                <h3>Passengers Waiting</h3>
+                <h3 style="margin-bottom: 12px;">👥 Passengers Waiting</h3>
                 <div id="waitingList" class="waiting-list"></div>
             </div>
 
-            <div style="margin-top: 20px;">
-                <button id="trackBus" class="btn btn-success">🔍 Track Bus</button>
-                <button id="stopTracking" class="btn btn-danger hidden">⏹️ Stop Tracking</button>
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+                <button id="trackBus" class="btn btn-success">
+                    <span class="material-symbols-outlined">search</span>
+                    Track Bus
+                </button>
+                <button id="stopTracking" class="btn btn-danger hidden">
+                    <span class="material-symbols-outlined">stop_circle</span>
+                    Stop Tracking
+                </button>
             </div>
 
             <div id="etaInfo" class="info-panel hidden" style="margin-top: 20px;">
-                <p>Tracking active buses on your route...</p>
+                <p style="text-align: center; font-weight: 500;">Tracking active buses on your route...</p>
+                <div class="eta-display" style="display: none; margin-top: 12px;"></div>
             </div>
         </div>
 
         <!-- Map Container -->
         <div id="mapContainer" class="card hidden">
+            <h3 style="margin-bottom: 12px;">🗺️ Live Map <span class="chip">Interactive - Drag to explore</span></h3>
             <div id="map"></div>
         </div>
     </div>
@@ -444,17 +704,20 @@
                 </div>
 
                 <div class="form-actions">
-                    <button id="loginBtn" class="btn btn-primary" style="width: 100%;">Login</button>
+                    <button id="loginBtn" class="btn btn-primary" style="width: 100%;">
+                        <span class="material-symbols-outlined">login</span>
+                        Login
+                    </button>
                 </div>
 
                 <div class="form-toggle">
                     Don't have an account? <a href="#" id="showRegister">Register here</a>
                 </div>
 
-                <div style="margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; font-size: 14px;">
-                    <strong>Default Login:</strong><br>
-                    Driver ID: DRIVER001<br>
-                    Password: admin123
+                <div class="info-box">
+                    <strong>📌 Default Login Credentials:</strong>
+                    Driver ID: <code>DRIVER001</code><br>
+                    Password: <code>admin123</code>
                 </div>
             </div>
 
@@ -491,7 +754,10 @@
                 </div>
 
                 <div class="form-actions">
-                    <button id="registerBtn" class="btn btn-success" style="width: 100%;">Register</button>
+                    <button id="registerBtn" class="btn btn-success" style="width: 100%;">
+                        <span class="material-symbols-outlined">person_add</span>
+                        Register
+                    </button>
                 </div>
 
                 <div class="form-toggle">
