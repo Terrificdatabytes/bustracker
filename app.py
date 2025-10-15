@@ -631,4 +631,112 @@ def handle_bus_location(data):
     
     # Log location with enhanced data
     log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, 
-                        nearest_stop['id'], nearest_stop['name'],
+                        nearest_stop['id'], nearest_stop['name'], 
+                        distance_km, speed_kmh, distance_from_start, 
+                        driver_info['driver_id'])
+    
+    # Check if arriving at stop (within 100 meters)
+    if distance_km < 0.1:
+        bus_stop_key = f"{bus_id}_{nearest_stop['id']}"
+        actual_time_min = eta_minutes
+        
+        if bus_stop_key in bus_arrival_times:
+            prev_prediction = bus_arrival_times[bus_stop_key]
+            time_elapsed = (current_time - prev_prediction['time']).total_seconds() / 60
+            actual_time_min = time_elapsed
+        
+        log_arrival(route_id, nearest_stop['id'], nearest_stop['name'], 
+                   eta_minutes, actual_time_min, distance_km, bus_id, 
+                   driver_info['driver_id'], speed_kmh, distance_from_start)
+        
+        if bus_stop_key in bus_arrival_times:
+            del bus_arrival_times[bus_stop_key]
+    else:
+        bus_stop_key = f"{bus_id}_{nearest_stop['id']}"
+        bus_arrival_times[bus_stop_key] = {
+            'time': current_time,
+            'predicted_eta': eta_minutes
+        }
+    
+    # Send update to driver
+    emit('bus_info_update', {
+        'speed': round(speed_kmh, 2),
+        'nearest_stop': nearest_stop['name'],
+        'distance_to_stop': round(distance_km, 3),
+        'eta_to_stop': round(eta_minutes, 1),
+        'distance_from_start': round(distance_from_start, 3)
+    })
+    
+    # Broadcast to passengers
+    socketio.emit('bus_update', {
+        'route_id': route_id,
+        'bus_id': bus_id,
+        'lat': lat,
+        'lng': lng,
+        'eta_minutes': round(eta_minutes, 1),
+        'distance_km': round(distance_km, 2),
+        'nearest_stop': nearest_stop,
+        'traffic_level': traffic_level,
+        'driver_name': driver_info['name'],
+        'speed': round(speed_kmh, 2)
+    }, room=route_id, include_self=False)
+    
+    # Update bus count
+    socketio.emit('bus_count_update', {
+        'route_id': route_id,
+        'count': len(active_buses[route_id])
+    }, room=route_id)
+
+@socketio.on('passenger_waiting')
+def handle_passenger_waiting(data):
+    route_id = data.get('route_id')
+    stop_id = data.get('stop_id')
+    is_waiting = data.get('is_waiting', True)
+    
+    if not all([route_id, stop_id is not None]):
+        return
+    
+    if is_waiting:
+        waiting_passengers[route_id][stop_id] += 1
+    else:
+        if waiting_passengers[route_id][stop_id] > 0:
+            waiting_passengers[route_id][stop_id] -= 1
+    
+    socketio.emit('waiting_update', {
+        'route_id': route_id,
+        'stop_id': stop_id,
+        'count': waiting_passengers[route_id][stop_id]
+    }, room=route_id)
+    
+    socketio.emit('waiting_stats', dict(waiting_passengers))
+
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory('static', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+if __name__ == '__main__':
+    print("=" * 70)
+    print("🚌 Starting Enhanced Bus Tracking Server")
+    print("=" * 70)
+    print("✓ Real-time speed calculation from last 5 GPS points")
+    print("✓ Distance tracking from first stop")
+    print("✓ Duplicate location prevention")
+    print("✓ Enhanced arrival tracking with actual time calculation")
+    print("✓ Proper cleanup on bus disconnection")
+    print("=" * 70)
+    
+    init_drivers_file()
+    
+    try:
+        socketio.run(
+            app, 
+            debug=False,
+            host='0.0.0.0', 
+            port=5000,
+            use_reloader=False,
+            log_output=False
+        )
+    except KeyboardInterrupt:
+        print("\n✗ Shutting down server...")
+    except Exception as e:
+        print(f"✗ Server error: {e}")
