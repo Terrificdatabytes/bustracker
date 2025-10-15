@@ -18,7 +18,6 @@ import sys
 try:
     from model_class import LinearRegressionNumpy
 except ImportError:
-    # Define it inline if import fails
     class LinearRegressionNumpy:
         def __init__(self):
             self.weights = None
@@ -65,6 +64,7 @@ HISTORY_FILE = 'bus_history.csv'
 
 location_lock = Lock()
 history_lock = Lock()
+bus_data_lock = Lock()
 
 # Bus stop coordinates
 STOP_COORDS = {
@@ -121,14 +121,15 @@ STOP_COORDS = {
 
 # Store active buses with enhanced data
 active_buses = defaultdict(dict)
-bus_last_location = {}  # Track previous location for speed calculation
-bus_arrival_times = defaultdict(dict)  # Track predicted arrival times
+bus_speed_history = defaultdict(lambda: [])  # Track last 5 locations for speed calc
+bus_start_location = defaultdict(dict)  # Track distance from first stop
+bus_arrival_times = defaultdict(dict)
 waiting_passengers = defaultdict(lambda: defaultdict(int))
 authenticated_drivers = {}
+bus_logged_locations = defaultdict(set)  # Prevent duplicate logging
 
 # Load ML model
 try:
-    # Set the correct module for unpickling
     import sys
     sys.modules['train'] = sys.modules[__name__]
     
@@ -141,10 +142,8 @@ except FileNotFoundError:
 except Exception as e:
     model = None
     print(f"⚠ Warning: Could not load model: {e}")
-    print("  The system will use fallback ETA calculation.")
 
 def init_drivers_file():
-    """Initialize drivers CSV file"""
     if not os.path.isfile(DRIVERS_FILE):
         with open(DRIVERS_FILE, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -208,7 +207,6 @@ def register_driver(driver_id, password, name, phone, license_number):
         return {'success': False, 'message': 'Registration failed'}
 
 def haversine_distance(lat1, lon1, lat2, lon2):
-    """Calculate distance in kilometers"""
     R = 6371
     lat1, lon1, lat2, lon2 = map(np.radians, [lat1, lon1, lat2, lon2])
     dlat = lat2 - lat1
@@ -217,22 +215,62 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     c = 2 * np.arcsin(np.sqrt(a))
     return R * c
 
-def calculate_speed(bus_id, current_lat, current_lng, current_time):
-    """Calculate speed in km/h based on previous location"""
-    if bus_id not in bus_last_location:
+def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time):
+    """Calculate speed using last 5 locations over time span"""
+    with bus_data_lock:
+        if bus_id not in bus_speed_history:
+            bus_speed_history[bus_id] = []
+        
+        history = bus_speed_history[bus_id]
+        history.append({
+            'lat': current_lat,
+            'lng': current_lng,
+            'time': current_time
+        })
+        
+        # Keep only last 5 locations
+        if len(history) > 5:
+            history.pop(0)
+        
+        # Need at least 2 points to calculate speed
+        if len(history) < 2:
+            return 0.0
+        
+        # Calculate speed from oldest to newest point
+        oldest = history[0]
+        newest = history[-1]
+        
+        distance_km = haversine_distance(oldest['lat'], oldest['lng'], 
+                                         newest['lat'], newest['lng'])
+        time_diff_seconds = (newest['time'] - oldest['time']).total_seconds()
+        
+        if time_diff_seconds > 0.1:  # Avoid division by very small numbers
+            speed_kmh = (distance_km / time_diff_seconds) * 3600
+            return min(speed_kmh, 120)  # Cap at 120 km/h
+        
         return 0.0
-    
-    prev = bus_last_location[bus_id]
-    distance_km = haversine_distance(prev['lat'], prev['lng'], current_lat, current_lng)
-    time_diff_seconds = (current_time - prev['time']).total_seconds()
-    
-    if time_diff_seconds > 0:
-        speed_kmh = (distance_km / time_diff_seconds) * 3600
-        return min(speed_kmh, 100)  # Cap at 100 km/h
-    return 0.0
+
+def calculate_distance_from_start(route_id, bus_id, lat, lng):
+    """Calculate cumulative distance from first stop"""
+    with bus_data_lock:
+        if bus_id not in bus_start_location:
+            # Initialize with first stop coordinates
+            if route_id in STOP_COORDS and len(STOP_COORDS[route_id]) > 0:
+                first_stop = STOP_COORDS[route_id][0]
+                bus_start_location[bus_id] = {
+                    'start_lat': first_stop['lat'],
+                    'start_lng': first_stop['lng']
+                }
+            else:
+                return 0
+        
+        start = bus_start_location[bus_id]
+        distance_from_start = haversine_distance(
+            start['start_lat'], start['start_lng'], lat, lng
+        )
+        return distance_from_start
 
 def find_nearest_stop(route_id, lat, lng):
-    """Find nearest stop"""
     if route_id not in STOP_COORDS:
         return None
     
@@ -248,7 +286,6 @@ def find_nearest_stop(route_id, lat, lng):
     return nearest_stop, min_distance
 
 def predict_eta(distance_km, traffic_level):
-    """Predict ETA using trained model"""
     if model is None:
         base_speed = 30
         speed = base_speed / traffic_level if traffic_level > 0 else base_speed
@@ -263,9 +300,23 @@ def predict_eta(distance_km, traffic_level):
         return (distance_km / 30) * 60
 
 def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_id, 
-                        nearest_stop_name, distance_km, speed_kmh, driver_id=None):
-    """Enhanced location logging with stop info and speed"""
+                        nearest_stop_name, distance_km, speed_kmh, distance_from_start, driver_id=None):
+    """Location logging with deduplication"""
     try:
+        # Create location signature to prevent exact duplicates
+        loc_signature = f"{bus_id}_{round(lat, 6)}_{round(lng, 6)}"
+        
+        with bus_data_lock:
+            if loc_signature in bus_logged_locations[bus_id]:
+                return  # Skip duplicate
+            bus_logged_locations[bus_id].add(loc_signature)
+            
+            # Keep only last 200 signatures to prevent memory bloat
+            if len(bus_logged_locations[bus_id]) > 200:
+                old_sigs = list(bus_logged_locations[bus_id])
+                for sig in old_sigs[:-200]:
+                    bus_logged_locations[bus_id].discard(sig)
+        
         with location_lock:
             file_exists = os.path.isfile(LOCATIONS_FILE)
             
@@ -275,7 +326,7 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
                     writer.writerow(['timestamp', 'route_id', 'bus_id', 'driver_id', 
                                    'latitude', 'longitude', 'traffic_level', 
                                    'nearest_stop_id', 'nearest_stop_name', 
-                                   'distance_to_stop_km', 'speed_kmh'])
+                                   'distance_to_stop_km', 'distance_from_start_km', 'speed_kmh'])
                 
                 writer.writerow([
                     datetime.now().isoformat(),
@@ -288,6 +339,7 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
                     nearest_stop_id,
                     nearest_stop_name,
                     f"{distance_km:.3f}",
+                    f"{distance_from_start:.3f}",
                     f"{speed_kmh:.2f}"
                 ])
             
@@ -298,7 +350,6 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
         print(f"Location logging error: {e}")
 
 def cleanup_location_history():
-    """Keep most recent 80% of records"""
     try:
         with location_lock:
             with open(LOCATIONS_FILE, 'r') as f:
@@ -317,8 +368,7 @@ def cleanup_location_history():
         print(f"Cleanup error: {e}")
 
 def log_arrival(route_id, stop_id, stop_name, predicted_time_min, actual_time_min, 
-                distance_km, bus_id, driver_id, speed_kmh):
-    """Enhanced arrival logging with actual time calculation"""
+                distance_km, bus_id, driver_id, speed_kmh, distance_from_start):
     try:
         with history_lock:
             file_exists = os.path.isfile(HISTORY_FILE)
@@ -328,7 +378,7 @@ def log_arrival(route_id, stop_id, stop_name, predicted_time_min, actual_time_mi
                 if not file_exists:
                     writer.writerow(['timestamp', 'route_id', 'bus_id', 'driver_id', 
                                    'stop_id', 'stop_name', 'predicted_time_min', 
-                                   'actual_time_min', 'distance_km', 'speed_kmh'])
+                                   'actual_time_min', 'distance_km', 'distance_from_start_km', 'speed_kmh'])
                 
                 writer.writerow([
                     datetime.now().isoformat(),
@@ -340,6 +390,7 @@ def log_arrival(route_id, stop_id, stop_name, predicted_time_min, actual_time_mi
                     f"{predicted_time_min:.2f}",
                     f"{actual_time_min:.2f}",
                     f"{distance_km:.3f}",
+                    f"{distance_from_start:.3f}",
                     f"{speed_kmh:.2f}"
                 ])
                 
@@ -419,8 +470,13 @@ def handle_disconnect():
             for bus_id in list(active_buses[route_id].keys()):
                 if active_buses[route_id][bus_id].get('sid') == request.sid:
                     del active_buses[route_id][bus_id]
-                    if bus_id in bus_last_location:
-                        del bus_last_location[bus_id]
+                    # Clean up tracking data
+                    if bus_id in bus_speed_history:
+                        del bus_speed_history[bus_id]
+                    if bus_id in bus_start_location:
+                        del bus_start_location[bus_id]
+                    if bus_id in bus_logged_locations:
+                        del bus_logged_locations[bus_id]
                     socketio.emit('bus_removed', {
                         'route_id': route_id,
                         'bus_id': bus_id
@@ -511,8 +567,13 @@ def handle_leave_route(data):
     if mode == 'bus' and bus_id and route_id in active_buses:
         if bus_id in active_buses[route_id]:
             del active_buses[route_id][bus_id]
-            if bus_id in bus_last_location:
-                del bus_last_location[bus_id]
+            # Clean up tracking data
+            if bus_id in bus_speed_history:
+                del bus_speed_history[bus_id]
+            if bus_id in bus_start_location:
+                del bus_start_location[bus_id]
+            if bus_id in bus_logged_locations:
+                del bus_logged_locations[bus_id]
             socketio.emit('bus_removed', {
                 'route_id': route_id,
                 'bus_id': bus_id
@@ -537,15 +598,11 @@ def handle_bus_location(data):
     
     current_time = datetime.now()
     
-    # Calculate speed
-    speed_kmh = calculate_speed(bus_id, lat, lng, current_time)
+    # Calculate speed from last 5 seconds of history
+    speed_kmh = calculate_speed_from_history(bus_id, lat, lng, current_time)
     
-    # Update last location for next speed calculation
-    bus_last_location[bus_id] = {
-        'lat': lat,
-        'lng': lng,
-        'time': current_time
-    }
+    # Calculate distance from start
+    distance_from_start = calculate_distance_from_start(route_id, bus_id, lat, lng)
     
     # Find nearest stop
     result = find_nearest_stop(route_id, lat, lng)
@@ -558,129 +615,20 @@ def handle_bus_location(data):
     eta_minutes = predict_eta(distance_km, traffic_level)
     
     # Store bus location with enhanced data
-    active_buses[route_id][bus_id] = {
-        'lat': lat,
-        'lng': lng,
-        'traffic_level': traffic_level,
-        'timestamp': current_time.isoformat(),
-        'sid': request.sid,
-        'driver_id': driver_info['driver_id'],
-        'driver_name': driver_info['name'],
-        'speed': round(speed_kmh, 2),
-        'nearest_stop': nearest_stop['name'],
-        'distance_to_stop': round(distance_km, 3)
-    }
+    with bus_data_lock:
+        active_buses[route_id][bus_id] = {
+            'lat': lat,
+            'lng': lng,
+            'traffic_level': traffic_level,
+            'timestamp': current_time.isoformat(),
+            'sid': request.sid,
+            'driver_id': driver_info['driver_id'],
+            'driver_name': driver_info['name'],
+            'speed': round(speed_kmh, 2),
+            'nearest_stop': nearest_stop['name'],
+            'distance_to_stop': round(distance_km, 3)
+        }
     
     # Log location with enhanced data
     log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, 
-                        nearest_stop['id'], nearest_stop['name'], 
-                        distance_km, speed_kmh, driver_info['driver_id'])
-    
-    # Check if arriving at stop (within 100 meters)
-    if distance_km < 0.1:
-        # Calculate actual time if we have a previous prediction
-        bus_stop_key = f"{bus_id}_{nearest_stop['id']}"
-        actual_time_min = eta_minutes
-        
-        if bus_stop_key in bus_arrival_times:
-            prev_prediction = bus_arrival_times[bus_stop_key]
-            time_elapsed = (current_time - prev_prediction['time']).total_seconds() / 60
-            actual_time_min = time_elapsed
-        
-        log_arrival(route_id, nearest_stop['id'], nearest_stop['name'], 
-                   eta_minutes, actual_time_min, distance_km, bus_id, 
-                   driver_info['driver_id'], speed_kmh)
-        
-        # Clear prediction for this stop
-        if bus_stop_key in bus_arrival_times:
-            del bus_arrival_times[bus_stop_key]
-    else:
-        # Store prediction for future arrival calculation
-        bus_stop_key = f"{bus_id}_{nearest_stop['id']}"
-        bus_arrival_times[bus_stop_key] = {
-            'time': current_time,
-            'predicted_eta': eta_minutes
-        }
-    
-    # Send update to driver with enhanced info
-    emit('bus_info_update', {
-        'speed': round(speed_kmh, 2),
-        'nearest_stop': nearest_stop['name'],
-        'distance_to_stop': round(distance_km, 3),
-        'eta_to_stop': round(eta_minutes, 1)
-    })
-    
-    # Broadcast to passengers
-    socketio.emit('bus_update', {
-        'route_id': route_id,
-        'bus_id': bus_id,
-        'lat': lat,
-        'lng': lng,
-        'eta_minutes': round(eta_minutes, 1),
-        'distance_km': round(distance_km, 2),
-        'nearest_stop': nearest_stop,
-        'traffic_level': traffic_level,
-        'driver_name': driver_info['name'],
-        'speed': round(speed_kmh, 2)
-    }, room=route_id, include_self=False)
-    
-    # Update bus count
-    socketio.emit('bus_count_update', {
-        'route_id': route_id,
-        'count': len(active_buses[route_id])
-    }, room=route_id)
-    
-    # Use sleep to prevent conflicts (handled by eventlet)
-    time.sleep(0.01)
-
-@socketio.on('passenger_waiting')
-def handle_passenger_waiting(data):
-    route_id = data.get('route_id')
-    stop_id = data.get('stop_id')
-    is_waiting = data.get('is_waiting', True)
-    
-    if not all([route_id, stop_id is not None]):
-        return
-    
-    if is_waiting:
-        waiting_passengers[route_id][stop_id] += 1
-    else:
-        if waiting_passengers[route_id][stop_id] > 0:
-            waiting_passengers[route_id][stop_id] -= 1
-    
-    socketio.emit('waiting_update', {
-        'route_id': route_id,
-        'stop_id': stop_id,
-        'count': waiting_passengers[route_id][stop_id]
-    }, room=route_id)
-    
-    socketio.emit('waiting_stats', dict(waiting_passengers))
-
-@app.route('/favicon.ico')
-def favicon():
-    return send_from_directory('static', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
-
-if __name__ == '__main__':
-    print("=" * 70)
-    print("🚌 Starting Enhanced Bus Tracking Server")
-    print("=" * 70)
-    print("✓ Real-time location logging with speed and stop info")
-    print("✓ Enhanced arrival tracking with actual time calculation")
-    print("✓ Location updates every 1 second with conflict prevention")
-    print("=" * 70)
-    
-    init_drivers_file()
-    
-    try:
-        socketio.run(
-            app, 
-            debug=False,
-            host='0.0.0.0', 
-            port=5000,
-            use_reloader=False,
-            log_output=False
-        )
-    except KeyboardInterrupt:
-        print("\n✗ Shutting down server...")
-    except Exception as e:
-        print(f"✗ Server error: {e}")
+                        nearest_stop['id'], nearest_stop['name'],
