@@ -761,6 +761,26 @@ def handle_passenger_waiting(data):
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory('static', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    
+@app.route('/api/download/bus_locations')
+def download_bus_locations():
+    """Download bus locations CSV"""
+    try:
+        return send_from_directory('.', 'bus_locations.csv', 
+                                 as_attachment=True,
+                                 download_name='bus_locations.csv')
+    except FileNotFoundError:
+        return jsonify({'error': 'File not found'}), 404
+
+@app.route('/api/download/bus_history')
+def download_bus_history():
+    """Download bus history CSV"""
+    try:
+        return send_from_directory('.', 'bus_history.csv', 
+                                 as_attachment=True,
+                                 download_name='bus_history.csv')
+    except FileNotFoundError:
+        return jsonify({'error': 'File not found'}), 404
 
 if __name__ == '__main__':
     print("=" * 70)
