@@ -1,6 +1,4 @@
-// Complete script.js with Bidirectional Bus Tracking Support
-// Replace your existing script.js with this
-
+// Complete script.js with Current Stop Display & Bus Capacity Management
 // Global state
 let socket;
 let map;
@@ -18,6 +16,59 @@ let updateInterval = null;
 let driverInfo = null;
 let isAuthenticated = false;
 let isTracking = false;
+let wakeLock = null;
+let isBusFull = false; // NEW: Track bus capacity status
+
+// Store previous values for animation detection
+let previousValues = {
+    speed: null,
+    distance: null,
+    eta: null,
+    passengerEta: null,
+    passengerDistance: null,
+    passengerSpeed: null
+};
+
+// Wake Lock API - Prevent screen from turning off
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log('✓ Screen wake lock activated');
+            
+            wakeLock.addEventListener('release', () => {
+                console.log('Screen wake lock released');
+            });
+            
+            document.addEventListener('visibilitychange', async () => {
+                if (wakeLock !== null && document.visibilityState === 'visible') {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('✓ Screen wake lock re-acquired');
+                }
+            });
+            
+            return true;
+        } else {
+            console.log('⚠ Wake Lock API not supported');
+            return false;
+        }
+    } catch (err) {
+        console.error(`Wake Lock error: ${err.name}, ${err.message}`);
+        return false;
+    }
+}
+
+async function releaseWakeLock() {
+    if (wakeLock !== null) {
+        try {
+            await wakeLock.release();
+            wakeLock = null;
+            console.log('✓ Screen wake lock released');
+        } catch (err) {
+            console.error(`Wake Lock release error: ${err}`);
+        }
+    }
+}
 
 // DOM Elements
 const modeSelection = document.getElementById('modeSelection');
@@ -35,6 +86,76 @@ const loginForm = document.getElementById('loginForm');
 const registerForm = document.getElementById('registerForm');
 const showRegisterBtn = document.getElementById('showRegister');
 const showLoginBtn = document.getElementById('showLogin');
+
+// NEW: Capacity Toggle Element
+const capacityToggle = document.getElementById('capacityToggle');
+const capacityStatusText = document.getElementById('capacityStatusText');
+
+// Format distance display (km or meters)
+function formatDistance(distanceKm) {
+    if (distanceKm < 1) {
+        const meters = Math.round(distanceKm * 1000);
+        return `${meters} m`;
+    } else {
+        return `${distanceKm.toFixed(2)} km`;
+    }
+}
+
+// TradingView-style animation helper
+function animateValueChange(elementId, newValue, cardId = null) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    const oldValue = element.textContent;
+    
+    if (oldValue === newValue.toString()) return;
+    
+    element.classList.add('number-change');
+    
+    const oldNum = parseFloat(oldValue);
+    const newNum = parseFloat(newValue);
+    
+    if (cardId && !isNaN(oldNum) && !isNaN(newNum)) {
+        const card = document.getElementById(cardId);
+        if (card) {
+            card.classList.remove('flash-up', 'flash-down', 'flash-update');
+            
+            if (newNum > oldNum) {
+                card.classList.add('flash-up');
+            } else if (newNum < oldNum) {
+                card.classList.add('flash-down');
+            } else {
+                card.classList.add('flash-update');
+            }
+            
+            setTimeout(() => {
+                card.classList.remove('flash-up', 'flash-down', 'flash-update');
+            }, 600);
+        }
+    }
+    
+    element.textContent = newValue;
+    
+    setTimeout(() => {
+        element.classList.remove('number-change');
+    }, 400);
+}
+
+// Animate info value changes
+function animateInfoValue(elementId, newValue) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    const oldValue = element.textContent;
+    if (oldValue === newValue.toString()) return;
+    
+    element.classList.add('value-updating');
+    element.textContent = newValue;
+    
+    setTimeout(() => {
+        element.classList.remove('value-updating');
+    }, 400);
+}
 
 // Initialize Socket.IO
 function initSocket() {
@@ -96,6 +217,11 @@ function initSocket() {
     socket.on('waiting_update', handleWaitingUpdate);
     socket.on('waiting_stats', handleWaitingStats);
     socket.on('bus_info_update', handleBusInfoUpdate);
+    
+    // NEW: Listen for capacity update confirmation
+    socket.on('capacity_updated', (data) => {
+        console.log('✓ Capacity updated:', data.message);
+    });
 }
 
 function handleDriverAuthentication(data) {
@@ -127,31 +253,51 @@ function showDriverAuthModal() {
 }
 
 function handleBusInfoUpdate(data) {
-    // Update driver panel with real-time info
-    document.getElementById('busSpeed').textContent = data.speed;
-    document.getElementById('nearestStopDriver').textContent = data.nearest_stop;
-    document.getElementById('distanceToStop').textContent = data.distance_to_stop;
-    document.getElementById('etaToStop').textContent = data.eta_to_stop;
+    // Update driver panel with real-time info and animations
+    animateValueChange('busSpeed', data.speed, 'speedCard');
+    animateValueChange('nearestStopDriver', data.nearest_stop, 'stopCard');
+    animateValueChange('distanceToStop', formatDistance(data.distance_to_stop), 'distanceCard');
+    animateValueChange('etaToStop', data.eta_to_stop, 'etaCard');
     
-    // Add direction indicator
-    const directionEl = document.getElementById('busDirection');
-    if (directionEl && data.direction) {
-        const directionText = data.direction === 'forward' ? 'Forward ➡️' : 'Backward ⬅️';
-        directionEl.textContent = directionText;
-        directionEl.style.color = data.direction === 'forward' ? '#4CAF50' : '#FF9800';
-    }
+    // NEW: Display current stop if bus is at a stop
+    const currentStopDisplay = document.getElementById('currentStopDisplay');
+    const currentStopName = document.getElementById('currentStopName');
     
-    // Add progress indicator
-    const progressEl = document.getElementById('busProgress');
-    if (progressEl && data.progress_pct !== undefined) {
-        progressEl.textContent = `${data.progress_pct}%`;
+    if (data.current_stop) {
+        currentStopDisplay.classList.remove('hidden');
+        currentStopName.textContent = data.current_stop;
+    } else {
+        currentStopDisplay.classList.add('hidden');
     }
-    
-    // Update stops passed indicator
-    const stopsPassedEl = document.getElementById('stopsPassedCount');
-    if (stopsPassedEl && data.stops_passed !== undefined && data.total_stops !== undefined) {
-        stopsPassedEl.textContent = `${data.stops_passed} / ${data.total_stops}`;
-    }
+}
+
+// NEW: Bus Capacity Toggle Handler
+if (capacityToggle) {
+    capacityToggle.addEventListener('change', function() {
+        isBusFull = this.checked;
+        
+        // Update UI
+        if (isBusFull) {
+            capacityStatusText.textContent = 'Bus Full';
+            capacityStatusText.classList.remove('available');
+            capacityStatusText.classList.add('full');
+        } else {
+            capacityStatusText.textContent = 'Bus Available';
+            capacityStatusText.classList.remove('full');
+            capacityStatusText.classList.add('available');
+        }
+        
+        // Notify server
+        if (myBusId && currentRoute) {
+            socket.emit('bus_capacity_update', {
+                bus_id: myBusId,
+                route_id: currentRoute,
+                is_full: isBusFull
+            });
+            
+            console.log(`✓ Bus capacity updated: ${isBusFull ? 'FULL' : 'AVAILABLE'}`);
+        }
+    });
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -381,7 +527,7 @@ document.getElementById('trafficLevel').addEventListener('input', (e) => {
     document.getElementById('trafficValue').textContent = parseFloat(e.target.value).toFixed(1);
 });
 
-document.getElementById('startSharing').addEventListener('click', () => {
+document.getElementById('startSharing').addEventListener('click', async () => {
     if (!navigator.geolocation) {
         alert('Geolocation is not supported by your browser');
         return;
@@ -403,44 +549,21 @@ document.getElementById('startSharing').addEventListener('click', () => {
     document.getElementById('stopSharing').classList.remove('hidden');
     document.getElementById('busStatus').textContent = 'Sharing Location (Live)';
     document.getElementById('busStatus').style.color = '#4CAF50';
+    document.getElementById('recenterMap').style.display = 'inline-flex';
     
-    // Show driver stats panel
     document.getElementById('driverStats').classList.remove('hidden');
     
-    shareLocation();
-    
-    // Update every 1 second with proper timing
-    trackingInterval = setInterval(shareLocation, 1000);
-});
-
-document.getElementById('stopSharing').addEventListener('click', () => {
-    isSharing = false;
-    clearInterval(trackingInterval);
-    
-    socket.emit('leave_route', { 
-        route_id: currentRoute, 
-        mode: 'bus',
-        bus_id: myBusId 
-    });
-    
-    document.getElementById('stopSharing').classList.add('hidden');
-    document.getElementById('startSharing').classList.remove('hidden');
-    document.getElementById('busStatus').textContent = 'Stopped';
-    document.getElementById('busStatus').style.color = '#666';
-    document.getElementById('driverStats').classList.add('hidden');
-    
-    if (busMarkers[myBusId]) {
-        map.removeLayer(busMarkers[myBusId]);
-        delete busMarkers[myBusId];
+    const wakeLockEnabled = await requestWakeLock();
+    if (wakeLockEnabled) {
+        console.log('✓ Screen will stay on while sharing location');
     }
-});
-
-function shareLocation() {
-    navigator.geolocation.getCurrentPosition(
+    
+    trackingInterval = navigator.geolocation.watchPosition(
         (position) => {
             const { latitude, longitude } = position.coords;
-            
             const trafficLevel = parseFloat(document.getElementById('trafficLevel').value);
+            
+            console.log(`📍 Location update: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
             
             socket.emit('bus_location', {
                 route_id: currentRoute,
@@ -450,16 +573,7 @@ function shareLocation() {
                 traffic_level: trafficLevel
             });
             
-            // Get current direction from last update
-            const currentDirection = busMarkers[myBusId] ? 
-                (busMarkers[myBusId]._direction || 'forward') : 'forward';
-            
-            updateBusMarker(myBusId, latitude, longitude, true, null, currentDirection);
-            
-            // Only auto-center if not manually panned
-            if (!map._userPanned) {
-                map.setView([latitude, longitude], map.getZoom());
-            }
+            updateBusMarker(myBusId, latitude, longitude, true);
         },
         (error) => {
             console.error('Geolocation error:', error);
@@ -474,15 +588,37 @@ function shareLocation() {
             maximumAge: 0
         }
     );
-}
+});
 
-// Track if user manually panned the map
-if (map) {
-    map.on('dragstart', function() {
-        map._userPanned = true;
-        setTimeout(() => { map._userPanned = false; }, 10000); // Reset after 10s
+document.getElementById('stopSharing').addEventListener('click', () => {
+    isSharing = false;
+    
+    if (trackingInterval) {
+        navigator.geolocation.clearWatch(trackingInterval);
+        trackingInterval = null;
+    }
+    
+    socket.emit('leave_route', { 
+        route_id: currentRoute, 
+        mode: 'bus',
+        bus_id: myBusId 
     });
-}
+    
+    document.getElementById('stopSharing').classList.add('hidden');
+    document.getElementById('startSharing').classList.remove('hidden');
+    document.getElementById('busStatus').textContent = 'Stopped';
+    document.getElementById('busStatus').style.color = '#666';
+    document.getElementById('driverStats').classList.add('hidden');
+    document.getElementById('recenterMap').style.display = 'none';
+    document.getElementById('currentStopDisplay').classList.add('hidden');
+    
+    releaseWakeLock();
+    
+    if (busMarkers[myBusId]) {
+        map.removeLayer(busMarkers[myBusId]);
+        delete busMarkers[myBusId];
+    }
+});
 
 function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, direction = 'forward') {
     if (!map) {
@@ -492,7 +628,6 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, d
     
     const color = isOwnBus ? '#4CAF50' : '#FF9800';
     
-    // Choose emoji based on direction
     let label;
     if (isOwnBus) {
         label = direction === 'forward' ? '🚌→' : '🚌←';
@@ -502,7 +637,6 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, d
     
     if (busMarkers[busId]) {
         busMarkers[busId].setLatLng([lat, lng]);
-        // Update icon to reflect direction change
         busMarkers[busId].setIcon(L.divIcon({
             className: 'bus-marker',
             html: `<div style="background: ${color}; color: white; padding: 8px; border-radius: 50%; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); white-space: nowrap;">${label}</div>`,
@@ -530,11 +664,14 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, d
                 <p><strong>Direction:</strong> ${directionText}</p>
             </div>
         `);
+        
+        // Only center on first bus marker when initially added, then allow free panning
+        if (Object.keys(busMarkers).length === 1) {
+            map.setView([lat, lng], 14);
+        }
     }
     
-    if (Object.keys(busMarkers).length === 1 && !map._userPanned) {
-        map.setView([lat, lng], 14);
-    }
+    // Map is always unlocked - users can freely pan and zoom
 }
 
 function removeBusMarker(busId) {
@@ -552,7 +689,7 @@ function showMessage(status, route) {
     const messages = {
         loading: `🔍 Searching for buses on Route ${route}...`,
         found: `✅ Bus found on Route ${route}! Tracking now...`,
-        nobus: `❌ No buses found on Route ${route}....`,
+        nobus: `❌ No buses found on Route ${route}. All buses may be full or inactive.`,
         error: `⚠️ Error loading buses on Route ${route}. Please try again.`,
         multiple: `✅ Multiple buses found on Route ${route}! Displaying closest bus...`
     };
@@ -575,7 +712,7 @@ function showMessage(status, route) {
 
 const trackBusBtn = document.getElementById('trackBus');
 if (trackBusBtn) {
-    trackBusBtn.addEventListener('click', () => {
+    trackBusBtn.addEventListener('click', async () => {
         console.log('=== TRACK BUS CLICKED ===');
         
         if (!map) {
@@ -592,11 +729,16 @@ if (trackBusBtn) {
         trackBusBtn.classList.add('hidden');
         document.getElementById('stopTracking').classList.remove('hidden');
         document.getElementById('etaInfo').classList.remove('hidden');
+        document.getElementById('recenterMap').style.display = 'inline-flex';
+        
+        const wakeLockEnabled = await requestWakeLock();
+        if (wakeLockEnabled) {
+            console.log('✓ Screen will stay on while tracking bus');
+        }
         
         showMessage('loading', currentRoute);
         
         loadActiveBuses();
-        
         updateInterval = setInterval(loadActiveBuses, 2000);
     });
 }
@@ -606,6 +748,10 @@ document.getElementById('stopTracking').addEventListener('click', () => {
     document.getElementById('stopTracking').classList.add('hidden');
     document.getElementById('trackBus').classList.remove('hidden');
     document.getElementById('etaInfo').classList.add('hidden');
+    document.getElementById('recenterMap').style.display = 'none';
+    document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
+    
+    releaseWakeLock();
     
     if (updateInterval) {
         clearInterval(updateInterval);
@@ -618,6 +764,31 @@ document.getElementById('stopTracking').addEventListener('click', () => {
         }
     });
     busMarkers = {};
+});
+
+// Recenter map button handler
+document.getElementById('recenterMap').addEventListener('click', () => {
+    const busIds = Object.keys(busMarkers);
+    
+    if (busIds.length === 0) {
+        alert('No buses to center on');
+        return;
+    }
+    
+    if (busIds.length === 1) {
+        const marker = busMarkers[busIds[0]];
+        const latlng = marker.getLatLng();
+        map.setView([latlng.lat, latlng.lng], 15);
+    } else {
+        const bounds = L.latLngBounds();
+        busIds.forEach(busId => {
+            const marker = busMarkers[busId];
+            if (marker) {
+                bounds.extend(marker.getLatLng());
+            }
+        });
+        map.fitBounds(bounds, { padding: [50, 50] });
+    }
 });
 
 async function loadActiveBuses() {
@@ -655,15 +826,13 @@ async function loadActiveBuses() {
                 removeBusMarker(busId);
             });
             
-            const etaMinutesEl = document.getElementById('etaMinutes');
-            const distanceEl = document.getElementById('distance');
-            const nearestStopEl = document.getElementById('nearestStop');
-            const busSpeedEl = document.getElementById('busSpeedPassenger');
+            animateValueChange('etaMinutes', '--', 'passengerEtaCard');
+            animateValueChange('distance', '--', 'passengerDistanceCard');
+            animateValueChange('busLocationStop', 'No buses active', 'passengerStopCard');
+            animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
             
-            if (etaMinutesEl) etaMinutesEl.textContent = '--';
-            if (distanceEl) distanceEl.textContent = '-- km';
-            if (nearestStopEl) nearestStopEl.textContent = 'No buses active';
-            if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
+            // Hide current stop display
+            document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
         }
     } catch (error) {
         console.error('Error loading active buses:', error);
@@ -725,32 +894,27 @@ function handleAllBusesUpdate(data) {
 
 function handleBusRemoved(data) {
     removeBusMarker(data.bus_id);
+    
+    // Show message if bus was removed because it's full
+    if (data.reason === 'full' && currentMode === 'passenger') {
+        console.log('ℹ️ Bus marked as full and hidden from view');
+    }
+    
     if (isTracking) {
         updateClosestBusETA();
     }
 }
 
 function updateClosestBusETA() {
-    const etaMinutesEl = document.getElementById('etaMinutes');
-    const distanceEl = document.getElementById('distance');
-    const nearestStopEl = document.getElementById('nearestStop');
-    const busSpeedEl = document.getElementById('busSpeedPassenger');
-    const etaInfoDiv = document.getElementById('etaInfo');
-    const etaDisplay = etaInfoDiv ? etaInfoDiv.querySelector('.eta-display') : null;
-    
     const allBusIds = Object.keys(busMarkers);
     
     if (allBusIds.length === 0) {
-        if (etaMinutesEl) etaMinutesEl.textContent = '--';
-        if (distanceEl) distanceEl.textContent = '-- km';
-        if (nearestStopEl) nearestStopEl.textContent = 'No buses active';
-        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
-        if (etaDisplay) etaDisplay.style.display = 'none';
+        animateValueChange('etaMinutes', '--', 'passengerEtaCard');
+        animateValueChange('distance', '--', 'passengerDistanceCard');
+        animateValueChange('busLocationStop', 'No buses active', 'passengerStopCard');
+        animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
+        document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
         return;
-    }
-    
-    if (etaDisplay) {
-        etaDisplay.style.display = 'grid';
     }
     
     const waitingStopSelect = document.getElementById('waitingStopSelect');
@@ -767,11 +931,10 @@ function updateClosestBusETA() {
     }
     
     if (!referenceStop) {
-        if (etaMinutesEl) etaMinutesEl.textContent = '--';
-        if (distanceEl) distanceEl.textContent = '-- km';
-        if (nearestStopEl) nearestStopEl.textContent = 'Stop data unavailable';
-        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
-        if (etaDisplay) etaDisplay.style.display = 'none';
+        animateValueChange('etaMinutes', '--', 'passengerEtaCard');
+        animateValueChange('distance', '--', 'passengerDistanceCard');
+        animateValueChange('busLocationStop', 'Stop data unavailable', 'passengerStopCard');
+        animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
         return;
     }
     
@@ -795,43 +958,37 @@ function updateClosestBusETA() {
         const trafficLevel = 1.5;
         const etaMinutes = predictETA(minDistance, trafficLevel);
         
-        // Get speed and direction from active buses data
+        // Fetch and display next stop info
         fetch(`/api/active_buses/${currentRoute}`)
             .then(res => res.json())
             .then(data => {
                 const busData = data.buses.find(b => b.bus_id === closestBus);
                 if (busData) {
-                    if (busSpeedEl) {
-                        busSpeedEl.textContent = `${busData.speed} km/h`;
+                    animateValueChange('busSpeedPassenger', `${busData.speed} km/h`, 'passengerSpeedCard');
+                    
+                    // NEW: Display current stop if bus is at a stop
+                    const passengerCurrentStopDisplay = document.getElementById('passengerCurrentStopDisplay');
+                    const passengerCurrentStopName = document.getElementById('passengerCurrentStopName');
+                    
+                    if (busData.current_stop) {
+                        passengerCurrentStopDisplay.classList.remove('hidden');
+                        passengerCurrentStopName.textContent = busData.current_stop;
+                    } else {
+                        passengerCurrentStopDisplay.classList.add('hidden');
                     }
-                    // Update direction indicator for passenger
-                    const busDirectionEl = document.getElementById('busDirectionPassenger');
-                    if (busDirectionEl && busData.direction) {
-                        const dirText = busData.direction === 'forward' ? 'Forward ➡️' : 'Backward ⬅️';
-                        busDirectionEl.textContent = dirText;
-                        busDirectionEl.style.color = busData.direction === 'forward' ? '#4CAF50' : '#FF9800';
-                    }
+                    
+                    // Show bus's NEXT stop in the Next Stop field
+                    animateValueChange('busLocationStop', busData.next_stop || busData.nearest_stop || 'En route', 'passengerStopCard');
                 }
             });
         
-        if (etaMinutesEl) {
-            etaMinutesEl.textContent = Math.round(etaMinutes);
-        }
-        if (distanceEl) {
-            distanceEl.textContent = `${minDistance.toFixed(2)} km`;
-        }
-        if (nearestStopEl) {
-            nearestStopEl.textContent = referenceStop.name;
-        }
-        
-        if (etaDisplay) {
-            etaDisplay.style.display = 'grid';
-        }
+        animateValueChange('etaMinutes', Math.round(etaMinutes), 'passengerEtaCard');
+        animateValueChange('distance', formatDistance(minDistance), 'passengerDistanceCard');
     } else {
-        if (etaMinutesEl) etaMinutesEl.textContent = '--';
-        if (distanceEl) distanceEl.textContent = '-- km';
-        if (nearestStopEl) nearestStopEl.textContent = 'Calculating...';
-        if (busSpeedEl) busSpeedEl.textContent = '-- km/h';
+        animateValueChange('etaMinutes', '--', 'passengerEtaCard');
+        animateValueChange('distance', '--', 'passengerDistanceCard');
+        animateValueChange('busLocationStop', 'Calculating...', 'passengerStopCard');
+        animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
     }
 }
 
@@ -842,10 +999,7 @@ function predictETA(distanceKm, trafficLevel) {
 }
 
 function handleBusCountUpdate(data) {
-    const busCountEl = document.getElementById('busCount');
-    if (busCountEl) {
-        busCountEl.textContent = data.count;
-    }
+    animateInfoValue('busCount', data.count);
 }
 
 function handleWaitingUpdate(data) {
@@ -918,6 +1072,10 @@ function toRad(degrees) {
 
 window.addEventListener('beforeunload', () => {
     if (isSharing && myBusId) {
+        if (trackingInterval) {
+            navigator.geolocation.clearWatch(trackingInterval);
+        }
+        
         socket.emit('leave_route', { 
             route_id: currentRoute, 
             mode: 'bus',
@@ -925,16 +1083,20 @@ window.addEventListener('beforeunload', () => {
         });
     }
     
-    if (trackingInterval) {
-        clearInterval(trackingInterval);
-    }
-    
     if (updateInterval) {
         clearInterval(updateInterval);
     }
+    
+    releaseWakeLock();
 });
 
-console.log('=== Initializing Bidirectional Bus Tracking System ===');
+console.log('=== Initializing Enhanced Bus Tracking System ===');
+console.log('✓ Current stop detection enabled');
+console.log('✓ Bus capacity management enabled');
+console.log('✓ Full buses hidden from passenger view');
+console.log('✓ Next stop display for passengers');
+console.log('✓ TradingView-style animations enabled');
+console.log('✓ Continuous GPS tracking with watchPosition');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
@@ -952,6 +1114,8 @@ if (document.readyState === 'loading') {
 window.addEventListener('load', () => {
     console.log('=== Page Fully Loaded ===');
     console.log('✓ All elements loaded');
+    console.log('✓ Animation system ready');
+    console.log('✓ Capacity toggle ready');
     console.log('✓ Track Bus button exists:', !!document.getElementById('trackBus'));
     console.log('✓ Passenger UI exists:', !!document.getElementById('passengerUI'));
     console.log('✓ Map container exists:', !!document.getElementById('map'));
