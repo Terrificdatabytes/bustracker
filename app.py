@@ -1,3 +1,8 @@
+"""
+Complete Flask Backend Code with Bidirectional Bus Tracking
+Add this to your app.py file - Replace the relevant sections
+"""
+
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
@@ -58,7 +63,6 @@ socketio = SocketIO(
     always_connect=True
 )
 #socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
 DRIVERS_FILE = 'bus_drivers.csv'
 LOCATIONS_FILE = 'bus_locations.csv'
 HISTORY_FILE = 'bus_history.csv'
@@ -67,7 +71,7 @@ location_lock = Lock()
 history_lock = Lock()
 bus_data_lock = Lock()
 
-# Bus stop coordinates
+# Bus stop coordinates (your existing STOP_COORDS)
 STOP_COORDS = {
     '48AC': [
         {'id': 1, 'name': 'Thirupallai', 'lat': 9.9720416, 'lng': 78.1394837},
@@ -119,63 +123,67 @@ STOP_COORDS = {
         {'id': 17, 'name': 'Periyar Bus Stand', 'lat': 9.915244, 'lng': 78.1115843}
     ],
     "madurai-saptur": [
-    {'id': 1, 'name': 'Saptur Bus Stand', 'lat': 9.7723817, 'lng': 77.7374431},
-    {'id': 2, 'name': 'Saptur Forest Office', 'lat': 9.7755529, 'lng': 77.737918},
-    {'id': 3, 'name': 'Siva Crusher', 'lat': 9.7737385, 'lng': 77.7858195},
-    {'id': 4, 'name': 'Saptur Road', 'lat': 9.7432873, 'lng': 77.7904612},
-    {'id': 5, 'name': 'Ponnamal CBSC School', 'lat': 9.7665694, 'lng': 77.7882914},
-    {'id': 6, 'name': 'Peraiyur Court', 'lat': 9.7567696, 'lng': 77.7893734},
-    {'id': 7, 'name': 'Peraiyur Mukkusaalai', 'lat': 9.7430768, 'lng': 77.7910007},
-    {'id': 8, 'name': 'Peraiyur Bustand', 'lat': 9.7389502, 'lng': 77.7906355},
-    {'id': 9, 'name': 'Kilangulam', 'lat': 9.7304061, 'lng': 77.8272974},
-    {'id': 10, 'name': 'Linga Bar', 'lat': 9.7226814, 'lng': 77.8362759},
-    {'id': 11, 'name': 'Thevankurichi', 'lat': 9.7235742, 'lng': 77.8410545},
-    {'id': 12, 'name': 'T.Kallupatti Bus Stand', 'lat': 9.7206795, 'lng': 77.8508348},
-    {'id': 13, 'name': 'Kunnathur Bus Stop', 'lat': 9.7505023, 'lng': 77.8888632},
-    {'id': 14, 'name': 'Glanis', 'lat': 9.7740229, 'lng': 77.9093458},
-    {'id': 15, 'name': 'Aalambatti', 'lat': 9.8018663, 'lng': 77.9596753},
-    {'id': 16, 'name': 'Temple City', 'lat': 9.7885873, 'lng': 77.9421658},
-    {'id': 17, 'name': 'Kumaran Sweets', 'lat': 9.8133634, 'lng': 77.9771267},
-    {'id': 18, 'name': 'Tirumangalam Firestation', 'lat': 9.8122745, 'lng': 77.9844116},
-    {'id': 19, 'name': 'Aanandha Theatre', 'lat': 9.8235956, 'lng': 77.986501},
-    {'id': 20, 'name': 'Thirumangalam Bus Stand', 'lat': 9.8270958, 'lng': 77.9903955},
-    {'id': 21, 'name': 'Kappalur Toll Gate', 'lat': 9.8449551, 'lng': 78.0113708},
-    {'id': 22, 'name': 'Mill Gate', 'lat': 9.8352877, 'lng': 78.0011298},
-    {'id': 23, 'name': 'Indian Oil Old Thirumangalam Road', 'lat': 9.8346501, 'lng': 78.0445027},
-    {'id': 24, 'name': 'Mandela Nagar', 'lat': 9.8414792, 'lng': 78.1051064},
-    {'id': 25, 'name': 'Towards Mattuthavani', 'lat': 9.8358971, 'lng': 78.037723},
-    {'id': 26, 'name': 'Towards Mattuthavani', 'lat': 9.8484554, 'lng': 78.0153539},
-    {'id': 27, 'name': 'Towards Mattuthavani', 'lat': 9.8344319, 'lng': 78.0663435},
-    {'id': 28, 'name': 'Towards Mathuthavani', 'lat': 9.831472, 'lng': 78.0781023},
-    {'id': 29, 'name': 'Towards Mattithavani', 'lat': 9.8269897, 'lng': 78.080763},
-    {'id': 30, 'name': 'Towards Mattuthavani', 'lat': 9.8246217, 'lng': 78.0928845},
-    {'id': 31, 'name': 'Towards Mathuthavani', 'lat': 9.829696, 'lng': 78.0955452},
-    {'id': 32, 'name': 'Valayangulam', 'lat': 9.8328868, 'lng': 78.1032648},
-    {'id': 33, 'name': 'Towards Airport', 'lat': 9.8373478, 'lng': 78.1041231},
-    {'id': 34, 'name': 'Chinthamani Toll Plaza', 'lat': 9.8821239, 'lng': 78.1390886},
-    {'id': 35, 'name': 'Vellamal Hospital', 'lat': 9.8851023, 'lng': 78.1498333},
-    {'id': 36, 'name': 'Meenatchi Hotel', 'lat': 9.8971065, 'lng': 78.1625559},
-    {'id': 37, 'name': 'Vandiyur Toll Plaza', 'lat': 9.9222622, 'lng': 78.1697644},
-    {'id': 38, 'name': 'Towards Vasantham Traders', 'lat': 9.9130317, 'lng': 78.1703246},
-    {'id': 39, 'name': 'Service Road', 'lat': 9.9318083, 'lng': 78.1688223},
-    {'id': 40, 'name': 'Pandi Kovil', 'lat': 9.9343941, 'lng': 78.1680154},
-    {'id': 41, 'name': 'HCL Villaku', 'lat': 9.9389473, 'lng': 78.1666767},
-    {'id': 42, 'name': 'Melur Cut Road', 'lat': 9.9491978, 'lng': 78.1634435},
-    {'id': 43, 'name': 'Saravana Stores', 'lat': 9.9477118, 'lng': 78.1604699},
-    {'id': 44, 'name': 'Omni Bus Stand', 'lat': 9.9460579, 'lng': 78.1575302},
-    {'id': 45, 'name': 'Mattuthavani Bus Stand / M.G.R. Nillaiyam', 'lat': 9.9455227, 'lng': 78.1565945}
+        {'id': 1, 'name': 'Saptur Bus Stand', 'lat': 9.7723817, 'lng': 77.7374431},
+        {'id': 2, 'name': 'Saptur Forest Office', 'lat': 9.7755529, 'lng': 77.737918},
+        {'id': 3, 'name': 'Siva Crusher', 'lat': 9.7737385, 'lng': 77.7858195},
+        {'id': 4, 'name': 'Saptur Road', 'lat': 9.7432873, 'lng': 77.7904612},
+        {'id': 5, 'name': 'Ponnamal CBSC School', 'lat': 9.7665694, 'lng': 77.7882914},
+        {'id': 6, 'name': 'Peraiyur Court', 'lat': 9.7567696, 'lng': 77.7893734},
+        {'id': 7, 'name': 'Peraiyur Mukkusaalai', 'lat': 9.7430768, 'lng': 77.7910007},
+        {'id': 8, 'name': 'Peraiyur Bustand', 'lat': 9.7389502, 'lng': 77.7906355},
+        {'id': 9, 'name': 'Kilangulam', 'lat': 9.7304061, 'lng': 77.8272974},
+        {'id': 10, 'name': 'Linga Bar', 'lat': 9.7226814, 'lng': 77.8362759},
+        {'id': 11, 'name': 'Thevankurichi', 'lat': 9.7235742, 'lng': 77.8410545},
+        {'id': 12, 'name': 'T.Kallupatti Bus Stand', 'lat': 9.7206795, 'lng': 77.8508348},
+        {'id': 13, 'name': 'Kunnathur Bus Stop', 'lat': 9.7505023, 'lng': 77.8888632},
+        {'id': 14, 'name': 'Glanis', 'lat': 9.7740229, 'lng': 77.9093458},
+        {'id': 15, 'name': 'Aalambatti', 'lat': 9.8018663, 'lng': 77.9596753},
+        {'id': 16, 'name': 'Temple City', 'lat': 9.7885873, 'lng': 77.9421658},
+        {'id': 17, 'name': 'Kumaran Sweets', 'lat': 9.8133634, 'lng': 77.9771267},
+        {'id': 18, 'name': 'Tirumangalam Firestation', 'lat': 9.8122745, 'lng': 77.9844116},
+        {'id': 19, 'name': 'Aanandha Theatre', 'lat': 9.8235956, 'lng': 77.986501},
+        {'id': 20, 'name': 'Thirumangalam Bus Stand', 'lat': 9.8270958, 'lng': 77.9903955},
+        {'id': 21, 'name': 'Kappalur Toll Gate', 'lat': 9.8449551, 'lng': 78.0113708},
+        {'id': 22, 'name': 'Mill Gate', 'lat': 9.8352877, 'lng': 78.0011298},
+        {'id': 23, 'name': 'Indian Oil Old Thirumangalam Road', 'lat': 9.8346501, 'lng': 78.0445027},
+        {'id': 24, 'name': 'Mandela Nagar', 'lat': 9.8414792, 'lng': 78.1051064},
+        {'id': 25, 'name': 'Towards Mattuthavani', 'lat': 9.8358971, 'lng': 78.037723},
+        {'id': 26, 'name': 'Towards Mattuthavani', 'lat': 9.8484554, 'lng': 78.0153539},
+        {'id': 27, 'name': 'Towards Mattuthavani', 'lat': 9.8344319, 'lng': 78.0663435},
+        {'id': 28, 'name': 'Towards Mathuthavani', 'lat': 9.831472, 'lng': 78.0781023},
+        {'id': 29, 'name': 'Towards Mattithavani', 'lat': 9.8269897, 'lng': 78.080763},
+        {'id': 30, 'name': 'Towards Mattuthavani', 'lat': 9.8246217, 'lng': 78.0928845},
+        {'id': 31, 'name': 'Towards Mathuthavani', 'lat': 9.829696, 'lng': 78.0955452},
+        {'id': 32, 'name': 'Valayangulam', 'lat': 9.8328868, 'lng': 78.1032648},
+        {'id': 33, 'name': 'Towards Airport', 'lat': 9.8373478, 'lng': 78.1041231},
+        {'id': 34, 'name': 'Chinthamani Toll Plaza', 'lat': 9.8821239, 'lng': 78.1390886},
+        {'id': 35, 'name': 'Vellamal Hospital', 'lat': 9.8851023, 'lng': 78.1498333},
+        {'id': 36, 'name': 'Meenatchi Hotel', 'lat': 9.8971065, 'lng': 78.1625559},
+        {'id': 37, 'name': 'Vandiyur Toll Plaza', 'lat': 9.9222622, 'lng': 78.1697644},
+        {'id': 38, 'name': 'Towards Vasantham Traders', 'lat': 9.9130317, 'lng': 78.1703246},
+        {'id': 39, 'name': 'Service Road', 'lat': 9.9318083, 'lng': 78.1688223},
+        {'id': 40, 'name': 'Pandi Kovil', 'lat': 9.9343941, 'lng': 78.1680154},
+        {'id': 41, 'name': 'HCL Villaku', 'lat': 9.9389473, 'lng': 78.1666767},
+        {'id': 42, 'name': 'Melur Cut Road', 'lat': 9.9491978, 'lng': 78.1634435},
+        {'id': 43, 'name': 'Saravana Stores', 'lat': 9.9477118, 'lng': 78.1604699},
+        {'id': 44, 'name': 'Omni Bus Stand', 'lat': 9.9460579, 'lng': 78.1575302},
+        {'id': 45, 'name': 'Mattuthavani Bus Stand / M.G.R. Nillaiyam', 'lat': 9.9455227, 'lng': 78.1565945}
     ]
-    
 }
 
 # Store active buses with enhanced data
 active_buses = defaultdict(dict)
-bus_speed_history = defaultdict(lambda: [])  # Track last 5 locations for speed calc
-bus_start_location = defaultdict(dict)  # Track distance from first stop
+bus_speed_history = defaultdict(lambda: [])
+bus_start_location = defaultdict(dict)
 bus_arrival_times = defaultdict(dict)
 waiting_passengers = defaultdict(lambda: defaultdict(int))
 authenticated_drivers = {}
-bus_logged_locations = defaultdict(set)  # Prevent duplicate logging
+bus_logged_locations = defaultdict(set)
+
+# NEW: Bidirectional tracking data structures
+bus_last_passed_stop = defaultdict(lambda: None)
+bus_direction = defaultdict(lambda: None)
+bus_position_history = defaultdict(list)
 
 # Load ML model
 try:
@@ -277,15 +285,12 @@ def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time)
             'time': current_time
         })
         
-        # Keep only last 5 locations
         if len(history) > 5:
             history.pop(0)
         
-        # Need at least 2 points to calculate speed
         if len(history) < 2:
             return 0.0
         
-        # Calculate speed from oldest to newest point
         oldest = history[0]
         newest = history[-1]
         
@@ -293,9 +298,9 @@ def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time)
                                          newest['lat'], newest['lng'])
         time_diff_seconds = (newest['time'] - oldest['time']).total_seconds()
         
-        if time_diff_seconds > 0.1:  # Avoid division by very small numbers
+        if time_diff_seconds > 0.1:
             speed_kmh = (distance_km / time_diff_seconds) * 3600
-            return min(speed_kmh, 120)  # Cap at 120 km/h
+            return min(speed_kmh, 120)
         
         return 0.0
 
@@ -303,7 +308,6 @@ def calculate_distance_from_start(route_id, bus_id, lat, lng):
     """Calculate cumulative distance from first stop"""
     with bus_data_lock:
         if bus_id not in bus_start_location:
-            # Initialize with first stop coordinates
             if route_id in STOP_COORDS and len(STOP_COORDS[route_id]) > 0:
                 first_stop = STOP_COORDS[route_id][0]
                 bus_start_location[bus_id] = {
@@ -320,6 +324,7 @@ def calculate_distance_from_start(route_id, bus_id, lat, lng):
         return distance_from_start
 
 def find_nearest_stop(route_id, lat, lng):
+    """Fallback function - finds nearest stop without direction"""
     if route_id not in STOP_COORDS:
         return None
     
@@ -333,6 +338,185 @@ def find_nearest_stop(route_id, lat, lng):
             nearest_stop = stop
     
     return nearest_stop, min_distance
+
+def detect_bus_direction(route_id, bus_id, lat, lng):
+    """
+    Detect if bus is traveling forward (stop 1->N) or backward (stop N->1)
+    Uses recent position history to determine direction
+    """
+    if route_id not in STOP_COORDS:
+        return 'forward'
+    
+    stops = STOP_COORDS[route_id]
+    if len(stops) < 2:
+        return 'forward'
+    
+    # Add current position to history
+    bus_position_history[bus_id].append({'lat': lat, 'lng': lng, 'time': datetime.now()})
+    
+    # Keep only last 5 positions
+    if len(bus_position_history[bus_id]) > 5:
+        bus_position_history[bus_id].pop(0)
+    
+    # Need at least 3 positions to determine direction
+    if len(bus_position_history[bus_id]) < 3:
+        # Try to guess from current position
+        first_stop = stops[0]
+        last_stop = stops[-1]
+        
+        dist_to_first = haversine_distance(lat, lng, first_stop['lat'], first_stop['lng'])
+        dist_to_last = haversine_distance(lat, lng, last_stop['lat'], last_stop['lng'])
+        
+        return 'forward' if dist_to_first < dist_to_last else 'backward'
+    
+    # Calculate which stop index we were closest to at each position
+    position_indices = []
+    for pos in bus_position_history[bus_id]:
+        min_dist = float('inf')
+        closest_idx = 0
+        
+        for idx, stop in enumerate(stops):
+            dist = haversine_distance(pos['lat'], pos['lng'], stop['lat'], stop['lng'])
+            if dist < min_dist:
+                min_dist = dist
+                closest_idx = idx
+        
+        position_indices.append(closest_idx)
+    
+    # Check if indices are generally increasing (forward) or decreasing (backward)
+    if len(position_indices) >= 2:
+        first_idx = position_indices[0]
+        last_idx = position_indices[-1]
+        
+        if last_idx > first_idx:
+            return 'forward'
+        elif last_idx < first_idx:
+            return 'backward'
+    
+    return bus_direction.get(bus_id, 'forward')
+
+
+def find_next_stop_bidirectional(route_id, bus_id, lat, lng):
+    """
+    Find the next stop based on direction of travel.
+    Works for both forward (1->N) and backward (N->1) travel.
+    Returns: (next_stop, distance_to_next, direction)
+    """
+    if route_id not in STOP_COORDS:
+        return None, None, None
+    
+    stops = STOP_COORDS[route_id]
+    if len(stops) == 0:
+        return None, None, None
+    
+    # Detect current direction
+    current_direction = detect_bus_direction(route_id, bus_id, lat, lng)
+    bus_direction[bus_id] = current_direction
+    
+    # Find current nearest stop
+    min_distance = float('inf')
+    nearest_stop = None
+    nearest_idx = 0
+    
+    for idx, stop in enumerate(stops):
+        distance = haversine_distance(lat, lng, stop['lat'], stop['lng'])
+        if distance < min_distance:
+            min_distance = distance
+            nearest_stop = stop
+            nearest_idx = idx
+    
+    # Get last passed stop info
+    last_passed = bus_last_passed_stop.get(bus_id)
+    
+    # Determine if we should move to next stop
+    if min_distance < 0.1:  # Within 100 meters of a stop
+        if current_direction == 'forward':
+            if nearest_idx < len(stops) - 1:
+                # Update last passed stop
+                bus_last_passed_stop[bus_id] = {
+                    'stop': nearest_stop,
+                    'idx': nearest_idx,
+                    'direction': 'forward'
+                }
+                
+                # Return NEXT stop
+                next_idx = nearest_idx + 1
+                next_stop = stops[next_idx]
+                distance_to_next = haversine_distance(lat, lng, next_stop['lat'], next_stop['lng'])
+                return next_stop, distance_to_next, current_direction
+            else:
+                # At last stop
+                return nearest_stop, min_distance, current_direction
+        
+        else:  # backward
+            if nearest_idx > 0:
+                # Update last passed stop
+                bus_last_passed_stop[bus_id] = {
+                    'stop': nearest_stop,
+                    'idx': nearest_idx,
+                    'direction': 'backward'
+                }
+                
+                # Return PREVIOUS stop (next in backward direction)
+                next_idx = nearest_idx - 1
+                next_stop = stops[next_idx]
+                distance_to_next = haversine_distance(lat, lng, next_stop['lat'], next_stop['lng'])
+                return next_stop, distance_to_next, current_direction
+            else:
+                # At first stop
+                return nearest_stop, min_distance, current_direction
+    
+    # Not at a stop yet
+    if last_passed and last_passed['direction'] == current_direction:
+        # Continue in same direction from last passed stop
+        if current_direction == 'forward':
+            target_idx = last_passed['idx'] + 1
+            if target_idx < len(stops):
+                target_stop = stops[target_idx]
+                distance_to_target = haversine_distance(lat, lng, target_stop['lat'], target_stop['lng'])
+                return target_stop, distance_to_target, current_direction
+        else:  # backward
+            target_idx = last_passed['idx'] - 1
+            if target_idx >= 0:
+                target_stop = stops[target_idx]
+                distance_to_target = haversine_distance(lat, lng, target_stop['lat'], target_stop['lng'])
+                return target_stop, distance_to_target, current_direction
+    
+    # Fallback: return nearest stop in the direction of travel
+    if current_direction == 'forward':
+        # Find next stop ahead
+        for idx in range(nearest_idx, len(stops)):
+            stop = stops[idx]
+            distance = haversine_distance(lat, lng, stop['lat'], stop['lng'])
+            if distance > 0.05:  # More than 50m away
+                return stop, distance, current_direction
+    else:  # backward
+        # Find next stop behind
+        for idx in range(nearest_idx, -1, -1):
+            stop = stops[idx]
+            distance = haversine_distance(lat, lng, stop['lat'], stop['lng'])
+            if distance > 0.05:
+                return stop, distance, current_direction
+    
+    # Ultimate fallback
+    return nearest_stop, min_distance, current_direction
+
+
+def reset_bus_route_tracking(bus_id):
+    """Reset all tracking when bus completes route or disconnects"""
+    if bus_id in bus_last_passed_stop:
+        del bus_last_passed_stop[bus_id]
+    if bus_id in bus_direction:
+        del bus_direction[bus_id]
+    if bus_id in bus_position_history:
+        del bus_position_history[bus_id]
+    if bus_id in bus_speed_history:
+        del bus_speed_history[bus_id]
+    if bus_id in bus_start_location:
+        del bus_start_location[bus_id]
+    if bus_id in bus_logged_locations:
+        del bus_logged_locations[bus_id]
+
 
 def predict_eta(distance_km, traffic_level):
     if model is None:
@@ -352,15 +536,13 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
                         nearest_stop_name, distance_km, speed_kmh, distance_from_start, driver_id=None):
     """Location logging with deduplication"""
     try:
-        # Create location signature to prevent exact duplicates
         loc_signature = f"{bus_id}_{round(lat, 6)}_{round(lng, 6)}"
         
         with bus_data_lock:
             if loc_signature in bus_logged_locations[bus_id]:
-                return  # Skip duplicate
+                return
             bus_logged_locations[bus_id].add(loc_signature)
             
-            # Keep only last 200 signatures to prevent memory bloat
             if len(bus_logged_locations[bus_id]) > 200:
                 old_sigs = list(bus_logged_locations[bus_id])
                 for sig in old_sigs[:-200]:
@@ -392,7 +574,6 @@ def log_location_to_csv(route_id, bus_id, lat, lng, traffic_level, nearest_stop_
                     f"{speed_kmh:.2f}"
                 ])
             
-            # Auto-cleanup if file exceeds 10 MB
             if os.path.getsize(LOCATIONS_FILE) > 10 * 1024 * 1024:
                 cleanup_location_history()
     except Exception as e:
@@ -479,7 +660,8 @@ def get_active_buses(route_id):
                 'timestamp': bus_data.get('timestamp'),
                 'driver_name': bus_data.get('driver_name', 'Unknown'),
                 'speed': bus_data.get('speed', 0),
-                'nearest_stop': bus_data.get('nearest_stop', 'Unknown')
+                'nearest_stop': bus_data.get('nearest_stop', 'Unknown'),
+                'direction': bus_data.get('direction', 'forward')
             })
     return jsonify({'buses': buses})
 
@@ -519,13 +701,7 @@ def handle_disconnect():
             for bus_id in list(active_buses[route_id].keys()):
                 if active_buses[route_id][bus_id].get('sid') == request.sid:
                     del active_buses[route_id][bus_id]
-                    # Clean up tracking data
-                    if bus_id in bus_speed_history:
-                        del bus_speed_history[bus_id]
-                    if bus_id in bus_start_location:
-                        del bus_start_location[bus_id]
-                    if bus_id in bus_logged_locations:
-                        del bus_logged_locations[bus_id]
+                    reset_bus_route_tracking(bus_id)
                     socketio.emit('bus_removed', {
                         'route_id': route_id,
                         'bus_id': bus_id
@@ -596,7 +772,8 @@ def handle_join_route(data):
                         'nearest_stop': nearest_stop,
                         'traffic_level': bus_data.get('traffic_level', 1),
                         'driver_name': bus_data.get('driver_name', 'Unknown'),
-                        'speed': bus_data.get('speed', 0)
+                        'speed': bus_data.get('speed', 0),
+                        'direction': bus_data.get('direction', 'forward')
                     })
         
         emit('all_buses_update', {
@@ -616,13 +793,7 @@ def handle_leave_route(data):
     if mode == 'bus' and bus_id and route_id in active_buses:
         if bus_id in active_buses[route_id]:
             del active_buses[route_id][bus_id]
-            # Clean up tracking data
-            if bus_id in bus_speed_history:
-                del bus_speed_history[bus_id]
-            if bus_id in bus_start_location:
-                del bus_start_location[bus_id]
-            if bus_id in bus_logged_locations:
-                del bus_logged_locations[bus_id]
+            reset_bus_route_tracking(bus_id)
             socketio.emit('bus_removed', {
                 'route_id': route_id,
                 'bus_id': bus_id
@@ -653,15 +824,31 @@ def handle_bus_location(data):
     # Calculate distance from start
     distance_from_start = calculate_distance_from_start(route_id, bus_id, lat, lng)
     
-    # Find nearest stop
-    result = find_nearest_stop(route_id, lat, lng)
-    if not result:
-        return
-    
-    nearest_stop, distance_km = result
+    # Find NEXT stop on route with bidirectional support
+    result = find_next_stop_bidirectional(route_id, bus_id, lat, lng)
+    if not result[0]:
+        # Fallback to nearest if next stop logic fails
+        fallback = find_nearest_stop(route_id, lat, lng)
+        if not fallback:
+            return
+        nearest_stop, distance_km = fallback
+        direction = 'forward'
+    else:
+        nearest_stop, distance_km, direction = result
     
     # Predict ETA
     eta_minutes = predict_eta(distance_km, traffic_level)
+    
+    # Get progress info
+    last_passed = bus_last_passed_stop.get(bus_id)
+    stops_passed = last_passed['idx'] if last_passed else 0
+    total_stops = len(STOP_COORDS[route_id]) if route_id in STOP_COORDS else 0
+    
+    # Calculate progress percentage
+    if direction == 'forward':
+        progress_pct = (stops_passed / total_stops * 100) if total_stops > 0 else 0
+    else:
+        progress_pct = ((total_stops - stops_passed) / total_stops * 100) if total_stops > 0 else 0
     
     # Store bus location with enhanced data
     with bus_data_lock:
@@ -675,7 +862,11 @@ def handle_bus_location(data):
             'driver_name': driver_info['name'],
             'speed': round(speed_kmh, 2),
             'nearest_stop': nearest_stop['name'],
-            'distance_to_stop': round(distance_km, 3)
+            'distance_to_stop': round(distance_km, 3),
+            'next_stop_id': nearest_stop['id'],
+            'direction': direction,
+            'stops_passed': stops_passed,
+            'progress_pct': round(progress_pct, 1)
         }
     
     # Log location with enhanced data
@@ -684,7 +875,7 @@ def handle_bus_location(data):
                         distance_km, speed_kmh, distance_from_start, 
                         driver_info['driver_id'])
     
-    # Check if arriving at stop (within 100 meters)
+    # Log arrival when within 100 meters
     if distance_km < 0.1:
         bus_stop_key = f"{bus_id}_{nearest_stop['id']}"
         actual_time_min = eta_minutes
@@ -707,13 +898,22 @@ def handle_bus_location(data):
             'predicted_eta': eta_minutes
         }
     
-    # Send update to driver
+    # Direction indicator
+    direction_symbol = '→' if direction == 'forward' else '←'
+    
+    # Send update to driver with progress info
     emit('bus_info_update', {
         'speed': round(speed_kmh, 2),
         'nearest_stop': nearest_stop['name'],
         'distance_to_stop': round(distance_km, 3),
         'eta_to_stop': round(eta_minutes, 1),
-        'distance_from_start': round(distance_from_start, 3)
+        'distance_from_start': round(distance_from_start, 3),
+        'stops_passed': stops_passed,
+        'total_stops': total_stops,
+        'next_stop_number': nearest_stop['id'],
+        'direction': direction,
+        'direction_symbol': direction_symbol,
+        'progress_pct': round(progress_pct, 1)
     })
     
     # Broadcast to passengers
@@ -727,7 +927,11 @@ def handle_bus_location(data):
         'nearest_stop': nearest_stop,
         'traffic_level': traffic_level,
         'driver_name': driver_info['name'],
-        'speed': round(speed_kmh, 2)
+        'speed': round(speed_kmh, 2),
+        'stops_passed': stops_passed,
+        'total_stops': total_stops,
+        'direction': direction,
+        'direction_symbol': direction_symbol
     }, room=route_id, include_self=False)
     
     # Update bus count
@@ -765,7 +969,6 @@ def favicon():
     
 @app.route('/api/download/bus_locations')
 def download_bus_locations():
-    """Download bus locations CSV"""
     try:
         return send_from_directory('.', 'bus_locations.csv', 
                                  as_attachment=True,
@@ -775,7 +978,6 @@ def download_bus_locations():
 
 @app.route('/api/download/bus_history')
 def download_bus_history():
-    """Download bus history CSV"""
     try:
         return send_from_directory('.', 'bus_history.csv', 
                                  as_attachment=True,
@@ -785,10 +987,13 @@ def download_bus_history():
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("🚌 Starting Enhanced Bus Tracking Server")
+    print("🚌 Starting Bidirectional Bus Tracking Server")
     print("=" * 70)
     print("✓ Real-time speed calculation from last 5 GPS points")
     print("✓ Distance tracking from first stop")
+    print("✓ BIDIRECTIONAL tracking (Forward and Backward)")
+    print("✓ Direction detection from position history")
+    print("✓ Next stop prediction based on travel direction")
     print("✓ Duplicate location prevention")
     print("✓ Enhanced arrival tracking with actual time calculation")
     print("✓ Proper cleanup on bus disconnection")
