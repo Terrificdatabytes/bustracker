@@ -1,3 +1,6 @@
+// Complete script.js with Bidirectional Bus Tracking Support
+// Replace your existing script.js with this
+
 // Global state
 let socket;
 let map;
@@ -129,6 +132,26 @@ function handleBusInfoUpdate(data) {
     document.getElementById('nearestStopDriver').textContent = data.nearest_stop;
     document.getElementById('distanceToStop').textContent = data.distance_to_stop;
     document.getElementById('etaToStop').textContent = data.eta_to_stop;
+    
+    // Add direction indicator
+    const directionEl = document.getElementById('busDirection');
+    if (directionEl && data.direction) {
+        const directionText = data.direction === 'forward' ? 'Forward ➡️' : 'Backward ⬅️';
+        directionEl.textContent = directionText;
+        directionEl.style.color = data.direction === 'forward' ? '#4CAF50' : '#FF9800';
+    }
+    
+    // Add progress indicator
+    const progressEl = document.getElementById('busProgress');
+    if (progressEl && data.progress_pct !== undefined) {
+        progressEl.textContent = `${data.progress_pct}%`;
+    }
+    
+    // Update stops passed indicator
+    const stopsPassedEl = document.getElementById('stopsPassedCount');
+    if (stopsPassedEl && data.stops_passed !== undefined && data.total_stops !== undefined) {
+        stopsPassedEl.textContent = `${data.stops_passed} / ${data.total_stops}`;
+    }
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -427,7 +450,11 @@ function shareLocation() {
                 traffic_level: trafficLevel
             });
             
-            updateBusMarker(myBusId, latitude, longitude, true);
+            // Get current direction from last update
+            const currentDirection = busMarkers[myBusId] ? 
+                (busMarkers[myBusId]._direction || 'forward') : 'forward';
+            
+            updateBusMarker(myBusId, latitude, longitude, true, null, currentDirection);
             
             // Only auto-center if not manually panned
             if (!map._userPanned) {
@@ -450,37 +477,57 @@ function shareLocation() {
 }
 
 // Track if user manually panned the map
-map && map.on('dragstart', function() {
-    map._userPanned = true;
-    setTimeout(() => { map._userPanned = false; }, 10000); // Reset after 10s
-});
+if (map) {
+    map.on('dragstart', function() {
+        map._userPanned = true;
+        setTimeout(() => { map._userPanned = false; }, 10000); // Reset after 10s
+    });
+}
 
-function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null) {
+function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, direction = 'forward') {
     if (!map) {
         console.error('Map not initialized!');
         return;
     }
     
     const color = isOwnBus ? '#4CAF50' : '#FF9800';
-    const label = isOwnBus ? '🚌' : '🚍';
+    
+    // Choose emoji based on direction
+    let label;
+    if (isOwnBus) {
+        label = direction === 'forward' ? '🚌→' : '🚌←';
+    } else {
+        label = direction === 'forward' ? '🚍→' : '🚍←';
+    }
     
     if (busMarkers[busId]) {
         busMarkers[busId].setLatLng([lat, lng]);
+        // Update icon to reflect direction change
+        busMarkers[busId].setIcon(L.divIcon({
+            className: 'bus-marker',
+            html: `<div style="background: ${color}; color: white; padding: 8px; border-radius: 50%; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); white-space: nowrap;">${label}</div>`,
+            iconSize: [50, 40]
+        }));
+        busMarkers[busId]._direction = direction;
     } else {
         busMarkers[busId] = L.marker([lat, lng], {
             icon: L.divIcon({
                 className: 'bus-marker',
-                html: `<div style="background: ${color}; color: white; padding: 8px; border-radius: 50%; font-size: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.3);">${label}</div>`,
-                iconSize: [40, 40]
+                html: `<div style="background: ${color}; color: white; padding: 8px; border-radius: 50%; font-size: 16px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); white-space: nowrap;">${label}</div>`,
+                iconSize: [50, 40]
             })
         }).addTo(map);
         
+        busMarkers[busId]._direction = direction;
+        
+        const directionText = direction === 'forward' ? 'Forward' : 'Backward';
         const popupText = driverName ? `Driver: ${driverName}` : (isOwnBus ? 'Your Bus' : 'Active Bus');
         
         busMarkers[busId].bindPopup(`
             <div class="custom-popup">
                 <h4>${label} Bus ${busId.substring(0, 8)}</h4>
                 <p>${popupText}</p>
+                <p><strong>Direction:</strong> ${directionText}</p>
             </div>
         `);
     }
@@ -590,7 +637,8 @@ async function loadActiveBuses() {
             
             data.buses.forEach(bus => {
                 activeBusIds.push(bus.bus_id);
-                updateBusMarker(bus.bus_id, bus.lat, bus.lng, false, bus.driver_name);
+                const direction = bus.direction || 'forward';
+                updateBusMarker(bus.bus_id, bus.lat, bus.lng, false, bus.driver_name, direction);
             });
             
             Object.keys(busMarkers).forEach(busId => {
@@ -654,7 +702,8 @@ document.getElementById('waitingToggle').addEventListener('click', function() {
 });
 
 function handleBusUpdate(data) {
-    updateBusMarker(data.bus_id, data.lat, data.lng, false);
+    const direction = data.direction || 'forward';
+    updateBusMarker(data.bus_id, data.lat, data.lng, false, data.driver_name, direction);
     
     if (isTracking) {
         updateClosestBusETA();
@@ -664,7 +713,8 @@ function handleBusUpdate(data) {
 function handleAllBusesUpdate(data) {
     if (data.buses && data.buses.length > 0) {
         data.buses.forEach(bus => {
-            updateBusMarker(bus.bus_id, bus.lat, bus.lng, false);
+            const direction = bus.direction || 'forward';
+            updateBusMarker(bus.bus_id, bus.lat, bus.lng, false, bus.driver_name, direction);
         });
         
         if (isTracking) {
@@ -745,13 +795,22 @@ function updateClosestBusETA() {
         const trafficLevel = 1.5;
         const etaMinutes = predictETA(minDistance, trafficLevel);
         
-        // Get speed from active buses data
+        // Get speed and direction from active buses data
         fetch(`/api/active_buses/${currentRoute}`)
             .then(res => res.json())
             .then(data => {
                 const busData = data.buses.find(b => b.bus_id === closestBus);
-                if (busData && busSpeedEl) {
-                    busSpeedEl.textContent = `${busData.speed} km/h`;
+                if (busData) {
+                    if (busSpeedEl) {
+                        busSpeedEl.textContent = `${busData.speed} km/h`;
+                    }
+                    // Update direction indicator for passenger
+                    const busDirectionEl = document.getElementById('busDirectionPassenger');
+                    if (busDirectionEl && busData.direction) {
+                        const dirText = busData.direction === 'forward' ? 'Forward ➡️' : 'Backward ⬅️';
+                        busDirectionEl.textContent = dirText;
+                        busDirectionEl.style.color = busData.direction === 'forward' ? '#4CAF50' : '#FF9800';
+                    }
                 }
             });
         
@@ -875,7 +934,7 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-console.log('=== Initializing Enhanced Bus Tracking System ===');
+console.log('=== Initializing Bidirectional Bus Tracking System ===');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
