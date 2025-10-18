@@ -1,6 +1,6 @@
 """
-Complete Flask Backend Code with Bidirectional Bus Tracking
-Add this to your app.py file - Replace the relevant sections
+Complete Flask Backend Code with Current Stop Display & Bus Capacity Management
+Replace your entire app.py with this file
 """
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
@@ -51,7 +51,6 @@ except ImportError:
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
 CORS(app, supports_credentials=True)
-
 socketio = SocketIO(
     app, 
     cors_allowed_origins="*", 
@@ -63,6 +62,7 @@ socketio = SocketIO(
     always_connect=True
 )
 #socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+
 DRIVERS_FILE = 'bus_drivers.csv'
 LOCATIONS_FILE = 'bus_locations.csv'
 HISTORY_FILE = 'bus_history.csv'
@@ -71,7 +71,7 @@ location_lock = Lock()
 history_lock = Lock()
 bus_data_lock = Lock()
 
-# Bus stop coordinates (your existing STOP_COORDS)
+# Bus stop coordinates - KEEP YOUR EXISTING STOP_COORDS
 STOP_COORDS = {
     '48AC': [
         {'id': 1, 'name': 'Thirupallai', 'lat': 9.9720416, 'lng': 78.1394837},
@@ -180,10 +180,14 @@ waiting_passengers = defaultdict(lambda: defaultdict(int))
 authenticated_drivers = {}
 bus_logged_locations = defaultdict(set)
 
-# NEW: Bidirectional tracking data structures
+# Bidirectional tracking data structures
 bus_last_passed_stop = defaultdict(lambda: None)
 bus_direction = defaultdict(lambda: None)
 bus_position_history = defaultdict(list)
+
+# NEW: Current stop and capacity tracking
+bus_current_stop = defaultdict(lambda: None)
+bus_capacity_status = defaultdict(lambda: False)  # False = not full, True = full
 
 # Load ML model
 try:
@@ -338,6 +342,23 @@ def find_nearest_stop(route_id, lat, lng):
             nearest_stop = stop
     
     return nearest_stop, min_distance
+
+def detect_current_stop(route_id, lat, lng, threshold_km=0.100):
+    """
+    NEW FUNCTION: Detect if bus is currently at a stop
+    Returns stop info if within threshold distance, None otherwise
+    """
+    if route_id not in STOP_COORDS:
+        return None
+    
+    stops = STOP_COORDS[route_id]
+    
+    for stop in stops:
+        distance = haversine_distance(lat, lng, stop['lat'], stop['lng'])
+        if distance <= threshold_km:  # Within 150 meters
+            return stop
+    
+    return None
 
 def detect_bus_direction(route_id, bus_id, lat, lng):
     """
@@ -516,6 +537,10 @@ def reset_bus_route_tracking(bus_id):
         del bus_start_location[bus_id]
     if bus_id in bus_logged_locations:
         del bus_logged_locations[bus_id]
+    if bus_id in bus_current_stop:
+        del bus_current_stop[bus_id]
+    if bus_id in bus_capacity_status:
+        del bus_capacity_status[bus_id]
 
 
 def predict_eta(distance_km, traffic_level):
@@ -649,9 +674,16 @@ def get_waiting_stats():
 
 @app.route('/api/active_buses/<route_id>')
 def get_active_buses(route_id):
+    """
+    MODIFIED: Filter out full buses for passengers
+    """
     buses = []
     if route_id in active_buses:
         for bus_id, bus_data in active_buses[route_id].items():
+            # Skip full buses (they won't appear on passenger map)
+            if bus_capacity_status.get(bus_id, False):
+                continue
+                
             buses.append({
                 'bus_id': bus_id,
                 'lat': bus_data['lat'],
@@ -661,7 +693,9 @@ def get_active_buses(route_id):
                 'driver_name': bus_data.get('driver_name', 'Unknown'),
                 'speed': bus_data.get('speed', 0),
                 'nearest_stop': bus_data.get('nearest_stop', 'Unknown'),
-                'direction': bus_data.get('direction', 'forward')
+                'direction': bus_data.get('direction', 'forward'),
+                'current_stop': bus_data.get('current_stop', None),
+                'is_full': bus_data.get('is_full', False)
             })
     return jsonify({'buses': buses})
 
@@ -759,6 +793,10 @@ def handle_join_route(data):
         buses = []
         if route_id in active_buses:
             for bus_id, bus_data in active_buses[route_id].items():
+                # Skip full buses for passengers
+                if bus_capacity_status.get(bus_id, False):
+                    continue
+                    
                 result = find_nearest_stop(route_id, bus_data['lat'], bus_data['lng'])
                 if result:
                     nearest_stop, distance_km = result
@@ -773,7 +811,9 @@ def handle_join_route(data):
                         'traffic_level': bus_data.get('traffic_level', 1),
                         'driver_name': bus_data.get('driver_name', 'Unknown'),
                         'speed': bus_data.get('speed', 0),
-                        'direction': bus_data.get('direction', 'forward')
+                        'direction': bus_data.get('direction', 'forward'),
+                        'current_stop': bus_data.get('current_stop', None),
+                        'is_full': bus_data.get('is_full', False)
                     })
         
         emit('all_buses_update', {
@@ -824,6 +864,16 @@ def handle_bus_location(data):
     # Calculate distance from start
     distance_from_start = calculate_distance_from_start(route_id, bus_id, lat, lng)
     
+    # NEW: Detect current stop
+    current_stop_info = detect_current_stop(route_id, lat, lng)
+    if current_stop_info:
+        bus_current_stop[bus_id] = current_stop_info
+        current_stop_name = current_stop_info['name']
+        current_stop_id = current_stop_info['id']
+    else:
+        current_stop_name = None
+        current_stop_id = None
+    
     # Find NEXT stop on route with bidirectional support
     result = find_next_stop_bidirectional(route_id, bus_id, lat, lng)
     if not result[0]:
@@ -850,6 +900,9 @@ def handle_bus_location(data):
     else:
         progress_pct = ((total_stops - stops_passed) / total_stops * 100) if total_stops > 0 else 0
     
+    # Get bus capacity status
+    is_full = bus_capacity_status.get(bus_id, False)
+    
     # Store bus location with enhanced data
     with bus_data_lock:
         active_buses[route_id][bus_id] = {
@@ -866,7 +919,10 @@ def handle_bus_location(data):
             'next_stop_id': nearest_stop['id'],
             'direction': direction,
             'stops_passed': stops_passed,
-            'progress_pct': round(progress_pct, 1)
+            'progress_pct': round(progress_pct, 1),
+            'current_stop': current_stop_name,
+            'current_stop_id': current_stop_id,
+            'is_full': is_full
         }
     
     # Log location with enhanced data
@@ -913,32 +969,104 @@ def handle_bus_location(data):
         'next_stop_number': nearest_stop['id'],
         'direction': direction,
         'direction_symbol': direction_symbol,
-        'progress_pct': round(progress_pct, 1)
+        'progress_pct': round(progress_pct, 1),
+        'current_stop': current_stop_name,
+        'current_stop_id': current_stop_id,
+        'is_full': is_full
     })
     
-    # Broadcast to passengers
-    socketio.emit('bus_update', {
-        'route_id': route_id,
-        'bus_id': bus_id,
-        'lat': lat,
-        'lng': lng,
-        'eta_minutes': round(eta_minutes, 1),
-        'distance_km': round(distance_km, 2),
-        'nearest_stop': nearest_stop,
-        'traffic_level': traffic_level,
-        'driver_name': driver_info['name'],
-        'speed': round(speed_kmh, 2),
-        'stops_passed': stops_passed,
-        'total_stops': total_stops,
-        'direction': direction,
-        'direction_symbol': direction_symbol
-    }, room=route_id, include_self=False)
+    # Broadcast to passengers (only if bus is not full)
+    if not is_full:
+        socketio.emit('bus_update', {
+            'route_id': route_id,
+            'bus_id': bus_id,
+            'lat': lat,
+            'lng': lng,
+            'eta_minutes': round(eta_minutes, 1),
+            'distance_km': round(distance_km, 2),
+            'nearest_stop': nearest_stop,
+            'traffic_level': traffic_level,
+            'driver_name': driver_info['name'],
+            'speed': round(speed_kmh, 2),
+            'stops_passed': stops_passed,
+            'total_stops': total_stops,
+            'direction': direction,
+            'direction_symbol': direction_symbol,
+            'current_stop': current_stop_name,
+            'current_stop_id': current_stop_id,
+            'is_full': is_full
+        }, room=route_id, include_self=False)
     
-    # Update bus count
+    # Update bus count (only count non-full buses for passengers)
+    non_full_count = sum(1 for bid, bdata in active_buses[route_id].items() 
+                         if not bus_capacity_status.get(bid, False))
     socketio.emit('bus_count_update', {
         'route_id': route_id,
-        'count': len(active_buses[route_id])
+        'count': non_full_count
     }, room=route_id)
+
+@socketio.on('bus_capacity_update')
+def handle_bus_capacity_update(data):
+    """
+    NEW HANDLER: Update bus capacity status (full/not full)
+    """
+    if request.sid not in authenticated_drivers:
+        emit('authentication_required', {'message': 'Please authenticate first'})
+        return
+    
+    bus_id = data.get('bus_id')
+    is_full = data.get('is_full', False)
+    route_id = data.get('route_id')
+    
+    if not bus_id:
+        return
+    
+    # Update capacity status
+    bus_capacity_status[bus_id] = is_full
+    
+    # Update in active_buses
+    if route_id and route_id in active_buses and bus_id in active_buses[route_id]:
+        active_buses[route_id][bus_id]['is_full'] = is_full
+    
+    print(f"✓ Bus {bus_id} capacity updated: {'FULL' if is_full else 'AVAILABLE'}")
+    
+    # Notify driver
+    emit('capacity_updated', {
+        'bus_id': bus_id,
+        'is_full': is_full,
+        'message': 'Bus marked as FULL' if is_full else 'Bus marked as AVAILABLE'
+    })
+    
+    # If bus is now full, remove it from passenger view
+    if is_full and route_id:
+        socketio.emit('bus_removed', {
+            'route_id': route_id,
+            'bus_id': bus_id,
+            'reason': 'full'
+        }, room=route_id)
+    
+    # If bus is now available, add it back to passenger view
+    elif not is_full and route_id and route_id in active_buses and bus_id in active_buses[route_id]:
+        bus_data = active_buses[route_id][bus_id]
+        socketio.emit('bus_update', {
+            'route_id': route_id,
+            'bus_id': bus_id,
+            'lat': bus_data['lat'],
+            'lng': bus_data['lng'],
+            'eta_minutes': 0,
+            'distance_km': 0,
+            'nearest_stop': bus_data.get('nearest_stop', 'Unknown'),
+            'traffic_level': bus_data.get('traffic_level', 1),
+            'driver_name': bus_data.get('driver_name', 'Unknown'),
+            'speed': bus_data.get('speed', 0),
+            'stops_passed': bus_data.get('stops_passed', 0),
+            'total_stops': 0,
+            'direction': bus_data.get('direction', 'forward'),
+            'direction_symbol': '→' if bus_data.get('direction', 'forward') == 'forward' else '←',
+            'current_stop': bus_data.get('current_stop'),
+            'current_stop_id': bus_data.get('current_stop_id'),
+            'is_full': False
+        }, room=route_id)
 
 @socketio.on('passenger_waiting')
 def handle_passenger_waiting(data):
@@ -987,16 +1115,13 @@ def download_bus_history():
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("🚌 Starting Bidirectional Bus Tracking Server")
+    print("🚌 Starting Enhanced Bus Tracking Server")
     print("=" * 70)
-    print("✓ Real-time speed calculation from last 5 GPS points")
-    print("✓ Distance tracking from first stop")
-    print("✓ BIDIRECTIONAL tracking (Forward and Backward)")
-    print("✓ Direction detection from position history")
-    print("✓ Next stop prediction based on travel direction")
-    print("✓ Duplicate location prevention")
-    print("✓ Enhanced arrival tracking with actual time calculation")
-    print("✓ Proper cleanup on bus disconnection")
+    print("✓ Real-time speed calculation")
+    print("✓ Bidirectional tracking (Forward & Backward)")
+    print("✓ Current stop detection (150m threshold)")
+    print("✓ Bus capacity management (Full/Available)")
+    print("✓ Full buses hidden from passenger view")
     print("=" * 70)
     
     init_drivers_file()
