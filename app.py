@@ -57,6 +57,7 @@ socketio = SocketIO(
     engineio_logger=False,
     always_connect=True
 )
+#socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 DRIVERS_FILE = 'bus_drivers.csv'
 LOCATIONS_FILE = 'bus_locations.csv'
