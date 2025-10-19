@@ -7,9 +7,7 @@
 
 A production-ready, real-time bus tracking system with **98-99% accurate distance calculations**, live GPS tracking, and instant passenger notifications. Built with Flask, Socket.IO, and AI-calculated road distances.
 
-![Bus Tracking Demo](https://img.shields.io/badge/Demo-Live-brightgreen)
 
----
 
 ## 🌟 Features
 
