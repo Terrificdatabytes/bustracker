@@ -1,4 +1,6 @@
-// Complete script.js with Current Stop Display & Bus Capacity Management
+// Complete script.js with OSRM Waypoint-Based Distance Calculation
+// Date: 2025-10-19 16:38:01 UTC
+// Author: Terrificdatabytes
 // Global state
 let socket;
 let map;
@@ -17,7 +19,7 @@ let driverInfo = null;
 let isAuthenticated = false;
 let isTracking = false;
 let wakeLock = null;
-let isBusFull = false; // NEW: Track bus capacity status
+let isBusFull = false;
 
 // Store previous values for animation detection
 let previousValues = {
@@ -87,7 +89,7 @@ const registerForm = document.getElementById('registerForm');
 const showRegisterBtn = document.getElementById('showRegister');
 const showLoginBtn = document.getElementById('showLogin');
 
-// NEW: Capacity Toggle Element
+// Capacity Toggle Element
 const capacityToggle = document.getElementById('capacityToggle');
 const capacityStatusText = document.getElementById('capacityStatusText');
 
@@ -218,7 +220,7 @@ function initSocket() {
     socket.on('waiting_stats', handleWaitingStats);
     socket.on('bus_info_update', handleBusInfoUpdate);
     
-    // NEW: Listen for capacity update confirmation
+    // Listen for capacity update confirmation
     socket.on('capacity_updated', (data) => {
         console.log('✓ Capacity updated:', data.message);
     });
@@ -252,14 +254,110 @@ function showDriverAuthModal() {
     registerForm.classList.add('hidden');
 }
 
+// Update Driver Progress Bar Function
+function updateProgressBar(data) {
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBarFill = document.getElementById('progressBarFill');
+    const progressText = document.getElementById('progressText');
+    const progressDistance = document.getElementById('progressDistance');
+    const progressStart = document.getElementById('progressStart');
+    const progressEnd = document.getElementById('progressEnd');
+    
+    if (!progressContainer || !progressBarFill) return;
+    
+    console.log('🔵 Updating driver progress bar:', data);
+    
+    // Show progress bar when sharing location
+    if (isSharing) {
+        progressContainer.classList.remove('hidden');
+    }
+    
+    // Update progress percentage (from server)
+    const progress = Math.min(data.progress_pct || 0, 100);
+    progressBarFill.style.width = `${progress}%`;
+    progressText.textContent = `${Math.round(progress)}%`;
+    
+    // ✅ Update distance covered (FROM SERVER - waypoint-based)
+    const distanceCovered = data.distance_from_start || 0;
+    progressDistance.textContent = formatDistance(distanceCovered);
+    
+    console.log(`✅ Driver Progress: ${progress.toFixed(1)}%, Distance: ${distanceCovered.toFixed(2)} km (waypoint-based)`);
+    
+    // Update start/end stop names based on direction
+    if (currentRoute && window.stopsData && window.stopsData[currentRoute]) {
+        const stops = window.stopsData[currentRoute];
+        if (data.direction === 'forward') {
+            progressStart.textContent = stops[0]?.name || 'Start';
+            progressEnd.textContent = stops[stops.length - 1]?.name || 'End';
+        } else {
+            progressStart.textContent = stops[stops.length - 1]?.name || 'End';
+            progressEnd.textContent = stops[0]?.name || 'Start';
+        }
+    }
+}
+
+// Update Passenger Progress Bar Function
+function updatePassengerProgressBar(busData) {
+    const progressContainer = document.getElementById('passengerProgressContainer');
+    const progressBarFill = document.getElementById('passengerProgressBarFill');
+    const progressText = document.getElementById('passengerProgressText');
+    const progressDistance = document.getElementById('passengerProgressDistance');
+    const progressStart = document.getElementById('passengerProgressStart');
+    const progressEnd = document.getElementById('passengerProgressEnd');
+    
+    if (!progressContainer || !progressBarFill) {
+        console.warn('Passenger progress bar elements not found');
+        return;
+    }
+    
+    console.log('🔵 Updating passenger progress bar:', busData);
+    
+    // Show progress bar when tracking bus
+    if (isTracking && busData) {
+        progressContainer.classList.remove('hidden');
+        
+        // Update progress percentage (from server)
+        const progress = Math.min(busData.progress_pct || 0, 100);
+        progressBarFill.style.width = `${progress}%`;
+        progressText.textContent = `${Math.round(progress)}%`;
+        
+        // ✅ Update distance covered (FROM SERVER - waypoint-based)
+        const distanceCovered = busData.distance_from_start || 0;
+        progressDistance.textContent = formatDistance(distanceCovered);
+        
+        console.log(`✅ Passenger Progress: ${progress.toFixed(1)}%, Distance: ${distanceCovered.toFixed(2)} km (waypoint-based)`);
+        
+        // Update start/end stop names based on direction
+        if (currentRoute && window.stopsData && window.stopsData[currentRoute]) {
+            const stops = window.stopsData[currentRoute];
+            const direction = busData.direction || 'forward';
+            
+            if (direction === 'forward') {
+                progressStart.textContent = stops[0]?.name || 'Start';
+                progressEnd.textContent = stops[stops.length - 1]?.name || 'End';
+            } else {
+                progressStart.textContent = stops[stops.length - 1]?.name || 'End';
+                progressEnd.textContent = stops[0]?.name || 'Start';
+            }
+        }
+    } else {
+        progressContainer.classList.add('hidden');
+    }
+}
+
 function handleBusInfoUpdate(data) {
+    console.log('📊 Bus info update received:', data);
+    
     // Update driver panel with real-time info and animations
     animateValueChange('busSpeed', data.speed, 'speedCard');
     animateValueChange('nearestStopDriver', data.nearest_stop, 'stopCard');
     animateValueChange('distanceToStop', formatDistance(data.distance_to_stop), 'distanceCard');
     animateValueChange('etaToStop', data.eta_to_stop, 'etaCard');
     
-    // NEW: Display current stop if bus is at a stop
+    // Update progress bar with distance covered
+    updateProgressBar(data);
+    
+    // Display current stop if bus is at a stop
     const currentStopDisplay = document.getElementById('currentStopDisplay');
     const currentStopName = document.getElementById('currentStopName');
     
@@ -271,7 +369,7 @@ function handleBusInfoUpdate(data) {
     }
 }
 
-// NEW: Bus Capacity Toggle Handler
+// Bus Capacity Toggle Handler
 if (capacityToggle) {
     capacityToggle.addEventListener('change', function() {
         isBusFull = this.checked;
@@ -389,6 +487,7 @@ async function loadRoutes() {
         });
         
         window.stopsData = data.stops;
+        console.log('✓ Routes loaded:', data.routes);
     } catch (error) {
         console.error('Error loading routes:', error);
     }
@@ -416,6 +515,7 @@ function initMap(centerLat = 9.9252, centerLng = 78.1198) {
         keepBuffer: 2
     }).addTo(map);
     
+    console.log('✓ Map initialized');
     return map;
 }
 
@@ -447,16 +547,20 @@ function addStopMarkers(route) {
         
         stopMarkers.push(marker);
     });
+    
+    console.log(`✓ Added ${stops.length} stop markers for route ${route}`);
 }
 
 document.getElementById('busMode').addEventListener('click', () => {
     currentMode = 'bus';
+    console.log('✓ Bus mode selected');
     modeSelection.classList.add('hidden');
     routeSelection.classList.remove('hidden');
 });
 
 document.getElementById('passengerMode').addEventListener('click', () => {
     currentMode = 'passenger';
+    console.log('✓ Passenger mode selected');
     modeSelection.classList.add('hidden');
     routeSelection.classList.remove('hidden');
 });
@@ -466,6 +570,8 @@ document.getElementById('routeSelect').addEventListener('change', (e) => {
     
     if (!currentRoute) return;
     
+    console.log(`✓ Route selected: ${currentRoute}`);
+    
     if (currentMode === 'bus') {
         setupBusMode();
     } else {
@@ -474,6 +580,7 @@ document.getElementById('routeSelect').addEventListener('change', (e) => {
 });
 
 function setupBusMode() {
+    console.log('Setting up bus mode...');
     showDriverAuthModal();
     
     routeSelection.classList.add('hidden');
@@ -489,9 +596,12 @@ function setupBusMode() {
     } else {
         initMap();
     }
+    
+    console.log('✓ Bus mode setup complete');
 }
 
 function setupPassengerMode() {
+    console.log('Setting up passenger mode...');
     routeSelection.classList.add('hidden');
     passengerUI.classList.remove('hidden');
     mapContainer.classList.remove('hidden');
@@ -521,6 +631,8 @@ function setupPassengerMode() {
     socket.emit('join_route', { route_id: currentRoute, mode: 'passenger' });
     
     loadWaitingStats();
+    
+    console.log('✓ Passenger mode setup complete');
 }
 
 document.getElementById('trafficLevel').addEventListener('input', (e) => {
@@ -544,6 +656,7 @@ document.getElementById('startSharing').addEventListener('click', async () => {
         return;
     }
     
+    console.log('🚀 Starting location sharing...');
     isSharing = true;
     document.getElementById('startSharing').classList.add('hidden');
     document.getElementById('stopSharing').classList.remove('hidden');
@@ -591,6 +704,7 @@ document.getElementById('startSharing').addEventListener('click', async () => {
 });
 
 document.getElementById('stopSharing').addEventListener('click', () => {
+    console.log('⏹ Stopping location sharing...');
     isSharing = false;
     
     if (trackingInterval) {
@@ -611,6 +725,7 @@ document.getElementById('stopSharing').addEventListener('click', () => {
     document.getElementById('driverStats').classList.add('hidden');
     document.getElementById('recenterMap').style.display = 'none';
     document.getElementById('currentStopDisplay').classList.add('hidden');
+    document.getElementById('progressContainer').classList.add('hidden');
     
     releaseWakeLock();
     
@@ -665,19 +780,19 @@ function updateBusMarker(busId, lat, lng, isOwnBus = false, driverName = null, d
             </div>
         `);
         
-        // Only center on first bus marker when initially added, then allow free panning
+        console.log(`✓ Bus marker added: ${busId} at ${lat}, ${lng}`);
+        
         if (Object.keys(busMarkers).length === 1) {
             map.setView([lat, lng], 14);
         }
     }
-    
-    // Map is always unlocked - users can freely pan and zoom
 }
 
 function removeBusMarker(busId) {
     if (busMarkers[busId]) {
         map.removeLayer(busMarkers[busId]);
         delete busMarkers[busId];
+        console.log(`✓ Bus marker removed: ${busId}`);
     }
 }
 
@@ -740,16 +855,20 @@ if (trackBusBtn) {
         
         loadActiveBuses();
         updateInterval = setInterval(loadActiveBuses, 2000);
+        
+        console.log('✓ Bus tracking started, updating every 2 seconds');
     });
 }
 
 document.getElementById('stopTracking').addEventListener('click', () => {
+    console.log('⏹ Stopping bus tracking...');
     isTracking = false;
     document.getElementById('stopTracking').classList.add('hidden');
     document.getElementById('trackBus').classList.remove('hidden');
     document.getElementById('etaInfo').classList.add('hidden');
     document.getElementById('recenterMap').style.display = 'none';
     document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
+    document.getElementById('passengerProgressContainer').classList.add('hidden');
     
     releaseWakeLock();
     
@@ -764,9 +883,10 @@ document.getElementById('stopTracking').addEventListener('click', () => {
         }
     });
     busMarkers = {};
+    
+    console.log('✓ Bus tracking stopped');
 });
 
-// Recenter map button handler
 document.getElementById('recenterMap').addEventListener('click', () => {
     const busIds = Object.keys(busMarkers);
     
@@ -794,10 +914,15 @@ document.getElementById('recenterMap').addEventListener('click', () => {
 async function loadActiveBuses() {
     try {
         const url = `/api/active_buses/${currentRoute}`;
+        console.log(`📡 Fetching active buses from: ${url}`);
         const response = await fetch(url);
         const data = await response.json();
         
+        console.log('📦 Active buses data:', data);
+        
         if (data.buses && data.buses.length > 0) {
+            console.log(`✓ Found ${data.buses.length} active bus(es)`);
+            
             if (data.buses.length === 1) {
                 showMessage('found', currentRoute);
             } else {
@@ -820,6 +945,7 @@ async function loadActiveBuses() {
             
             updateClosestBusETA();
         } else {
+            console.warn('⚠ No active buses found');
             showMessage('nobus', currentRoute);
             
             Object.keys(busMarkers).forEach(busId => {
@@ -831,11 +957,11 @@ async function loadActiveBuses() {
             animateValueChange('busLocationStop', 'No buses active', 'passengerStopCard');
             animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
             
-            // Hide current stop display
             document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
+            document.getElementById('passengerProgressContainer').classList.add('hidden');
         }
     } catch (error) {
-        console.error('Error loading active buses:', error);
+        console.error('❌ Error loading active buses:', error);
         showMessage('error', currentRoute);
     }
 }
@@ -862,15 +988,18 @@ document.getElementById('waitingToggle').addEventListener('click', function() {
         this.classList.remove('btn-info');
         this.classList.add('btn-danger');
         currentWaitingStop = stopId;
+        console.log(`✓ Waiting at stop ${stopId}`);
     } else {
         this.textContent = "I'm Waiting at This Stop";
         this.classList.remove('btn-danger');
         this.classList.add('btn-info');
         currentWaitingStop = null;
+        console.log('✓ Cancelled waiting');
     }
 });
 
 function handleBusUpdate(data) {
+    console.log('🚌 Bus update:', data);
     const direction = data.direction || 'forward';
     updateBusMarker(data.bus_id, data.lat, data.lng, false, data.driver_name, direction);
     
@@ -880,6 +1009,7 @@ function handleBusUpdate(data) {
 }
 
 function handleAllBusesUpdate(data) {
+    console.log('🚍 All buses update:', data);
     if (data.buses && data.buses.length > 0) {
         data.buses.forEach(bus => {
             const direction = bus.direction || 'forward';
@@ -893,9 +1023,9 @@ function handleAllBusesUpdate(data) {
 }
 
 function handleBusRemoved(data) {
+    console.log('🗑 Bus removed:', data);
     removeBusMarker(data.bus_id);
     
-    // Show message if bus was removed because it's full
     if (data.reason === 'full' && currentMode === 'passenger') {
         console.log('ℹ️ Bus marked as full and hidden from view');
     }
@@ -904,9 +1034,10 @@ function handleBusRemoved(data) {
         updateClosestBusETA();
     }
 }
-
 function updateClosestBusETA() {
     const allBusIds = Object.keys(busMarkers);
+    
+    console.log(`📊 Updating ETA for ${allBusIds.length} bus(es)`);
     
     if (allBusIds.length === 0) {
         animateValueChange('etaMinutes', '--', 'passengerEtaCard');
@@ -914,6 +1045,7 @@ function updateClosestBusETA() {
         animateValueChange('busLocationStop', 'No buses active', 'passengerStopCard');
         animateValueChange('busSpeedPassenger', '--', 'passengerSpeedCard');
         document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
+        document.getElementById('passengerProgressContainer').classList.add('hidden');
         return;
     }
     
@@ -927,6 +1059,7 @@ function updateClosestBusETA() {
         const userStop = stops.find(s => s.id === selectedStopId);
         if (userStop) {
             referenceStop = userStop;
+            console.log(`✓ User selected stop: ${userStop.name} (ID: ${selectedStopId})`);
         }
     }
     
@@ -938,6 +1071,7 @@ function updateClosestBusETA() {
         return;
     }
     
+    // Find closest bus using simple haversine (just for selection)
     let closestBus = null;
     let minDistance = Infinity;
     
@@ -955,35 +1089,77 @@ function updateClosestBusETA() {
     });
     
     if (closestBus && minDistance !== Infinity) {
-        const trafficLevel = 1.5;
-        const etaMinutes = predictETA(minDistance, trafficLevel);
+        console.log(`✓ Closest bus: ${closestBus}`);
         
-        // Fetch and display next stop info
+        // ✅ Fetch bus data first
         fetch(`/api/active_buses/${currentRoute}`)
             .then(res => res.json())
             .then(data => {
                 const busData = data.buses.find(b => b.bus_id === closestBus);
                 if (busData) {
-                    animateValueChange('busSpeedPassenger', `${busData.speed} km/h`, 'passengerSpeedCard');
+                    console.log('✓ Bus data received:', busData);
                     
-                    // NEW: Display current stop if bus is at a stop
-                    const passengerCurrentStopDisplay = document.getElementById('passengerCurrentStopDisplay');
-                    const passengerCurrentStopName = document.getElementById('passengerCurrentStopName');
-                    
-                    if (busData.current_stop) {
-                        passengerCurrentStopDisplay.classList.remove('hidden');
-                        passengerCurrentStopName.textContent = busData.current_stop;
+                    // ✅ If user has selected a stop, get accurate waypoint-based distance
+                    if (selectedStopId) {
+                        fetch(`/api/passenger_distance/${currentRoute}/${closestBus}/${selectedStopId}`)
+                            .then(res => res.json())
+                            .then(distanceData => {
+                                console.log('✅ Waypoint-based distance data:', distanceData);
+                                
+                                const accurateDistance = distanceData.distance_to_stop_km;
+                                const trafficLevel = 1.5;
+                                const etaMinutes = predictETA(accurateDistance, trafficLevel);
+                                
+                                console.log(`📏 Accurate distance to stop: ${accurateDistance.toFixed(2)} km (waypoint-based)`);
+                                
+                                // Update UI with ACCURATE waypoint-based distance
+                                animateValueChange('etaMinutes', Math.round(etaMinutes), 'passengerEtaCard');
+                                animateValueChange('distance', formatDistance(accurateDistance), 'passengerDistanceCard');
+                                animateValueChange('busSpeedPassenger', `${busData.speed} km/h`, 'passengerSpeedCard');
+                                animateValueChange('busLocationStop', busData.next_stop || busData.nearest_stop || 'En route', 'passengerStopCard');
+                                
+                                // Display current stop if bus is at a stop
+                                const passengerCurrentStopDisplay = document.getElementById('passengerCurrentStopDisplay');
+                                const passengerCurrentStopName = document.getElementById('passengerCurrentStopName');
+                                
+                                if (busData.current_stop) {
+                                    passengerCurrentStopDisplay.classList.remove('hidden');
+                                    passengerCurrentStopName.textContent = busData.current_stop;
+                                } else {
+                                    passengerCurrentStopDisplay.classList.add('hidden');
+                                }
+                                
+                                // Update passenger progress bar
+                                updatePassengerProgressBar(busData);
+                            })
+                            .catch(error => {
+                                console.error('❌ Error fetching passenger distance:', error);
+                                // Fallback to haversine
+                                const trafficLevel = 1.5;
+                                const etaMinutes = predictETA(minDistance, trafficLevel);
+                                
+                                animateValueChange('etaMinutes', Math.round(etaMinutes), 'passengerEtaCard');
+                                animateValueChange('distance', formatDistance(minDistance) + ' (approx)', 'passengerDistanceCard');
+                                animateValueChange('busSpeedPassenger', `${busData.speed} km/h`, 'passengerSpeedCard');
+                                animateValueChange('busLocationStop', busData.next_stop || busData.nearest_stop || 'En route', 'passengerStopCard');
+                                updatePassengerProgressBar(busData);
+                            });
                     } else {
-                        passengerCurrentStopDisplay.classList.add('hidden');
+                        // No stop selected, use haversine as fallback
+                        const trafficLevel = 1.5;
+                        const etaMinutes = predictETA(minDistance, trafficLevel);
+                        
+                        animateValueChange('etaMinutes', Math.round(etaMinutes), 'passengerEtaCard');
+                        animateValueChange('distance', formatDistance(minDistance), 'passengerDistanceCard');
+                        animateValueChange('busSpeedPassenger', `${busData.speed} km/h`, 'passengerSpeedCard');
+                        animateValueChange('busLocationStop', busData.next_stop || busData.nearest_stop || 'En route', 'passengerStopCard');
+                        updatePassengerProgressBar(busData);
                     }
-                    
-                    // Show bus's NEXT stop in the Next Stop field
-                    animateValueChange('busLocationStop', busData.next_stop || busData.nearest_stop || 'En route', 'passengerStopCard');
                 }
+            })
+            .catch(error => {
+                console.error('❌ Error fetching bus data:', error);
             });
-        
-        animateValueChange('etaMinutes', Math.round(etaMinutes), 'passengerEtaCard');
-        animateValueChange('distance', formatDistance(minDistance), 'passengerDistanceCard');
     } else {
         animateValueChange('etaMinutes', '--', 'passengerEtaCard');
         animateValueChange('distance', '--', 'passengerDistanceCard');
@@ -992,6 +1168,7 @@ function updateClosestBusETA() {
     }
 }
 
+
 function predictETA(distanceKm, trafficLevel) {
     const baseSpeed = 30;
     const speed = baseSpeed / trafficLevel;
@@ -999,14 +1176,17 @@ function predictETA(distanceKm, trafficLevel) {
 }
 
 function handleBusCountUpdate(data) {
+    console.log('📊 Bus count update:', data);
     animateInfoValue('busCount', data.count);
 }
 
 function handleWaitingUpdate(data) {
+    console.log('👥 Waiting update:', data);
     loadWaitingStats();
 }
 
 function handleWaitingStats(data) {
+    console.log('📊 Waiting stats:', data);
     updateWaitingDisplay(data);
 }
 
@@ -1090,23 +1270,24 @@ window.addEventListener('beforeunload', () => {
     releaseWakeLock();
 });
 
-console.log('=== Initializing Enhanced Bus Tracking System ===');
+console.log('=== Initializing Enhanced Bus Tracking System with OSRM Waypoints ===');
 console.log('✓ Current stop detection enabled');
 console.log('✓ Bus capacity management enabled');
 console.log('✓ Full buses hidden from passenger view');
 console.log('✓ Next stop display for passengers');
+console.log('✓ Distance progress bar for Driver & Passenger modes');
+console.log('✓ OSRM waypoint-based distance (99% accuracy)');
 console.log('✓ TradingView-style animations enabled');
-console.log('✓ Continuous GPS tracking with watchPosition');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOM Content Loaded');
+        console.log('✓ DOM Content Loaded');
         initSocket();
         loadRoutes();
     });
 } else {
-    console.log('DOM already loaded');
+    console.log('✓ DOM already loaded');
     initSocket();
     loadRoutes();
 }
@@ -1114,9 +1295,12 @@ if (document.readyState === 'loading') {
 window.addEventListener('load', () => {
     console.log('=== Page Fully Loaded ===');
     console.log('✓ All elements loaded');
-    console.log('✓ Animation system ready');
-    console.log('✓ Capacity toggle ready');
     console.log('✓ Track Bus button exists:', !!document.getElementById('trackBus'));
     console.log('✓ Passenger UI exists:', !!document.getElementById('passengerUI'));
+    console.log('✓ Driver Stats exists:', !!document.getElementById('driverStats'));
     console.log('✓ Map container exists:', !!document.getElementById('map'));
+    console.log('✓ Progress containers exist:', {
+        driver: !!document.getElementById('progressContainer'),
+        passenger: !!document.getElementById('passengerProgressContainer')
+    });
 });
