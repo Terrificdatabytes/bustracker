@@ -807,7 +807,7 @@ def load_stop_distances_from_file():
     
     return False
 
-def init_drivers_file():
+'''def init_drivers_file():
     if not os.path.isfile(DRIVERS_FILE):
         with open(DRIVERS_FILE, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -821,7 +821,26 @@ def init_drivers_file():
                 'TN01234567890',
                 datetime.now().isoformat()
             ])
-        print("Created default driver: DRIVER001 / admin123")
+        print("Created default driver: DRIVER001 / admin123")'''
+def init_drivers_file():
+    """Initialize drivers file with default admin driver (registration disabled)"""
+    if not os.path.isfile(DRIVERS_FILE):
+        with open(DRIVERS_FILE, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['driver_id', 'password_hash', 'name', 'phone', 'license_number', 'created_at'])
+            
+            # Default admin driver
+            default_password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+            writer.writerow([
+                'DRIVER001',
+                default_password_hash,
+                'Admin Driver',
+                '9876543210',
+                'TN01234567890',
+                datetime.now().isoformat()
+            ])
+        print("✓ Created default driver: DRIVER001 / admin123")
+        print("⚠️  Driver registration disabled - add drivers manually to bus_drivers.csv")
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
@@ -845,7 +864,7 @@ def verify_driver(driver_id, password):
         print(f"Error verifying driver: {e}")
         return None
 
-def register_driver(driver_id, password, name, phone, license_number):
+'''def register_driver(driver_id, password, name, phone, license_number):
     try:
         with open(DRIVERS_FILE, 'r') as f:
             reader = csv.DictReader(f)
@@ -868,7 +887,7 @@ def register_driver(driver_id, password, name, phone, license_number):
         return {'success': True, 'message': 'Driver registered successfully'}
     except Exception as e:
         print(f"Error registering driver: {e}")
-        return {'success': False, 'message': 'Registration failed'}
+        return {'success': False, 'message': 'Registration failed'}'''
 
 def calculate_distance_with_waypoints(route_id, lat1, lon1, lat2, lon2):
     """
@@ -1370,7 +1389,7 @@ def get_active_buses(route_id):
             })
     return jsonify({'buses': buses})
 
-@app.route('/api/driver/register', methods=['POST'])
+'''@app.route('/api/driver/register', methods=['POST'])
 def driver_register():
     data = request.json
     driver_id = data.get('driver_id')
@@ -1387,7 +1406,7 @@ def driver_register():
     if result['success']:
         return jsonify(result)
     else:
-        return jsonify(result), 400
+        return jsonify(result), 400'''
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1531,24 +1550,53 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print(f'✗ Client disconnected: {request.sid}')
+    """Handle client disconnection - cleans up drivers, buses, and passengers"""
+    session_id = request.sid
+    print(f'✗ Client disconnected: {session_id}')
     
-    if request.sid in authenticated_drivers:
-        driver_info = authenticated_drivers[request.sid]
+    # Clean up authenticated drivers
+    if session_id in authenticated_drivers:
+        driver_info = authenticated_drivers[session_id]
         print(f"✗ Driver {driver_info.get('driver_id')} disconnected")
-        del authenticated_drivers[request.sid]
+        del authenticated_drivers[session_id]
     
+    # Clean up active buses (drivers)
     for route_id, buses in list(active_buses.items()):
         for bus_id, bus_data in list(buses.items()):
-            if bus_data.get('sid') == request.sid:
+            if bus_data.get('sid') == session_id:
                 print(f"✗ Removing bus {bus_id} from route {route_id}")
                 del active_buses[route_id][bus_id]
                 reset_bus_route_tracking(bus_id)
+                
+                # Notify passengers that bus is no longer active
                 socketio.emit('bus_removed', {
                     'route_id': route_id,
-                    'bus_id': bus_id
+                    'bus_id': bus_id,
+                    'message': 'Bus has stopped tracking'
                 }, room=route_id)
-
+                
+                # Also notify bus status update
+                socketio.emit('bus_status', {
+                    'route_id': route_id,
+                    'bus_id': bus_id,
+                    'status': 'inactive',
+                    'message': 'Bus is no longer active. Waiting for next bus...'
+                }, room=route_id)
+    
+    # Clean up waiting passengers
+    for route_id, stops in list(waiting_passengers.items()):
+        for stop_id, count in list(stops.items()):
+            if count > 0:
+                # Decrement waiting count for this session
+                # Note: This is a simple approach - you might want to track individual passenger sessions
+                waiting_passengers[route_id][stop_id] = max(0, count - 1)
+                
+                # Emit updated waiting count
+                socketio.emit('waiting_update', {
+                    'route_id': route_id,
+                    'stop_id': stop_id,
+                    'count': waiting_passengers[route_id][stop_id]
+                }, room=route_id)
 @socketio.on('driver_authenticate')
 def handle_driver_authenticate(data):
     driver_id = data.get('driver_id')
@@ -1928,7 +1976,23 @@ if __name__ == '__main__':
     print(f"📅 Server Start Time: 2025-10-19 20:00:52 UTC")
     print(f"👤 Logged in as: Terrificdatabytes")
     print("=" * 80)
-    
+    if not os.path.isfile(DRIVERS_FILE):
+        with open(DRIVERS_FILE, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['driver_id', 'password_hash', 'name', 'phone', 'license_number', 'created_at'])
+            
+            # Default admin driver
+            default_password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+            writer.writerow([
+                'DRIVER001',
+                default_password_hash,
+                'Admin Driver',
+                '9876543210',
+                'TN01234567890',
+                datetime.now().isoformat()
+            ])
+        print("✓ Created default driver: DRIVER001 / admin123")
+        print("⚠️  Driver registration disabled - add drivers manually to bus_drivers.csv")
     # ✅ Keep waypoint generation (needed for real-time bus tracking)
     initialize_routes_with_waypoints()
     
