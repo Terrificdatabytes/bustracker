@@ -20,16 +20,32 @@ A production-ready, real-time bus tracking system with **98-99% accurate distanc
 - **Zero API Costs** - All distances pre-calculated and cached
 - **Offline Capable** - Works without external API dependencies after initial setup
 
+### 💺 Advanced Seat & Passenger Management (NEW!)
+- **Default Seat Configuration** - 48 passenger seats + 2 crew seats (50 total)
+- **Bus Number Selection** - Drivers can select/enter their bus number for easy identification
+- **Manual Seat Counter** - +/- buttons for drivers to update occupied seats in real-time
+- **Automatic Capacity Detection** - Bus automatically marked as full when all seats occupied
+- **Waiting Passenger Count** - Real-time display of total waiting passengers across all stops
+- **Priority Queue System** - Automatic reservation for waiting passengers when bus is full
+- **Real-time Seat Updates** - Instant sync of seat availability via WebSocket
+- **Smart Notifications** - Alerts for seat status changes and priority reservations
+
 ### 👨‍✈️ Driver Features
 - Mobile-friendly driver interface
 - GPS location auto-detection
 - Route and direction selection
+- **Bus number selection/entry**
+- **Real-time seat management with +/- controls**
+- **Waiting passenger count display**
 - Start/Stop journey controls
 - Real-time position broadcasting
 
 ### 🧑‍🦰 Passenger Features
 - Select route and destination stop
 - See real-time bus distance
+- **View available seats and bus number**
+- **Automatic priority queue when bus is full**
+- **Real-time seat availability updates**
 - Live bus position on map
 - Estimated arrival information
 - Mobile-responsive interface
@@ -175,6 +191,51 @@ Where:
 - stop_distance_from_start: Pre-calculated from manual_distances.py
 - bus_distance_from_start: Real-time haversine calculation with waypoints
 ```
+
+### Seat Management System
+
+**How It Works:**
+
+1. **Default Configuration:**
+   - Each bus starts with 48 passenger seats and 2 crew seats (50 total)
+   - Occupied seats counter starts at 0
+
+2. **Driver Controls:**
+   - **Bus Number Selection:** Driver selects or enters bus number at start
+   - **Manual Counter:** +/- buttons to update occupied seats
+   - **Quick Reset:** Reset button to set counter back to 0
+   - **Auto-Full Detection:** Bus automatically marked full at 48/48 seats
+
+3. **Passenger View:**
+   - **Real-time Seat Availability:** See available seats for incoming bus
+   - **Bus Number Display:** Know which bus is approaching
+   - **Priority Queue:** Automatically joined when all buses are full
+   - **Queue Position:** See your position in the waiting queue
+
+4. **WebSocket Events:**
+   ```javascript
+   // Driver → Server
+   socket.emit('update_seat_count', {
+       bus_id: 'BUS001',
+       route_id: '48AC',
+       occupied_seats: 35
+   })
+   
+   // Server → Passengers
+   socket.on('bus_seat_update', {
+       bus_number: 'BUS-001',
+       occupied_seats: 35,
+       available_seats: 13,
+       is_full: false
+   })
+   ```
+
+5. **Priority Queue Logic:**
+   - When bus reaches full capacity (48/48 seats)
+   - Waiting passengers automatically added to priority queue
+   - First-in-first-out (FIFO) order maintained
+   - Queue position displayed to passengers
+   - Notifications sent when bus becomes available
 
 ---
 
@@ -465,7 +526,7 @@ location / {
 **WebSocket Events:**
 
 ```javascript
-// Driver → Server
+// Driver → Server: Location Update
 socket.emit('driver_location', {
     route_id: '48AC',
     bus_id: 'BUS001',
@@ -474,19 +535,75 @@ socket.emit('driver_location', {
     direction: 'forward'
 })
 
-// Server → Passengers
+// Driver → Server: Seat Count Update
+socket.emit('update_seat_count', {
+    bus_id: 'BUS001',
+    route_id: '48AC',
+    occupied_seats: 35
+})
+
+// Driver → Server: Set Bus Number
+socket.emit('set_bus_number', {
+    bus_id: 'BUS001',
+    bus_number: 'BUS-001'
+})
+
+// Passenger → Server: Join Priority Queue
+socket.emit('join_priority_queue', {
+    route_id: '48AC',
+    stop_id: 5,
+    passenger_id: 'PASSENGER123'
+})
+
+// Server → Passengers: Bus Location Update
 socket.on('bus_location_update', {
     route_id: '48AC',
     bus_id: 'BUS001',
     lat: 9.9720,
     lng: 78.1394,
-    distance_from_start: 5.234
+    distance_from_start: 5.234,
+    bus_number: 'BUS-001',
+    occupied_seats: 35,
+    available_seats: 13
+})
+
+// Server → Passengers: Seat Update
+socket.on('bus_seat_update', {
+    route_id: '48AC',
+    bus_id: 'BUS001',
+    occupied_seats: 35,
+    available_seats: 13,
+    is_full: false
+})
+
+// Server → All: Priority Queue Update
+socket.on('priority_queue_update', {
+    route_id: '48AC',
+    queue_length: 5
+})
+
+// Server → Passenger: Bus Full Notification
+socket.on('bus_full_notification', {
+    route_id: '48AC',
+    bus_id: 'BUS001',
+    bus_number: 'BUS-001',
+    message: 'Bus is now full. You will be prioritized for the next bus.'
 })
 ```
 
 **HTTP Endpoints:**
 
-- `GET /driver` - Driver interface
+- `GET /` - Home/Landing page
+- `GET /driver` - Driver interface (deprecated, now uses unified interface)
+- `GET /passenger` - Passenger interface (deprecated, now uses unified interface)
+- `POST /api/driver/login` - Driver authentication
+- `GET /api/routes` - Get all routes and stops
+- `GET /api/routes/<route_id>/stops` - Get route stops
+- `GET /api/active_buses/<route_id>` - Get active buses on route (includes seat info)
+- `GET /api/seat_info/<bus_id>` - Get seat information for specific bus
+- `GET /api/priority_queue/<route_id>` - Get priority queue for route
+- `GET /api/waiting_stats` - Get waiting passenger statistics
+- `GET /api/passenger_distance/<route_id>/<bus_id>/<stop_id>` - Calculate distance to stop
 - `GET /passenger` - Passenger interface
 - `POST /api/driver/login` - Driver authentication
 - `GET /api/routes` - Get all routes
