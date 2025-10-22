@@ -21,6 +21,13 @@ let isTracking = false;
 let wakeLock = null;
 let isBusFull = false;
 
+// Seat management state
+let myBusNumber = null;
+let occupiedSeats = 0;
+let totalSeats = 50;
+let isPriorityPassenger = false;
+let queuePosition = 0;
+
 // Store previous values for animation detection
 let previousValues = {
     speed: null,
@@ -224,6 +231,16 @@ function initSocket() {
     socket.on('capacity_updated', (data) => {
         console.log('✓ Capacity updated:', data.message);
     });
+    
+    // Seat management event listeners
+    socket.on('bus_number_confirmed', handleBusNumberConfirmed);
+    socket.on('seat_count_updated', handleSeatCountUpdated);
+    socket.on('bus_seat_status', handleBusSeatStatus);
+    socket.on('booking_confirmed', handleBookingConfirmed);
+    socket.on('booking_priority', handleBookingPriority);
+    socket.on('booking_error', handleBookingError);
+    socket.on('priority_count', handlePriorityCount);
+    socket.on('seat_status', handleSeatStatus);
 }
 
 function handleDriverAuthentication(data) {
@@ -354,6 +371,13 @@ function handleBusInfoUpdate(data) {
     animateValueChange('distanceToStop', formatDistance(data.distance_to_stop), 'distanceCard');
     animateValueChange('etaToStop', data.eta_to_stop, 'etaCard');
     
+    // Update seat information
+    if (data.occupied_seats !== undefined) {
+        occupiedSeats = data.occupied_seats;
+        totalSeats = data.total_seats || 50;
+        updateSeatDisplay();
+    }
+    
     // Update progress bar with distance covered
     updateProgressBar(data);
     
@@ -367,6 +391,183 @@ function handleBusInfoUpdate(data) {
     } else {
         currentStopDisplay.classList.add('hidden');
     }
+}
+
+// Seat management handlers
+function handleBusNumberConfirmed(data) {
+    console.log('✓ Bus number confirmed:', data);
+    myBusNumber = data.bus_number;
+    document.getElementById('busNumberValue').textContent = `#${data.bus_number}`;
+    document.getElementById('busNumberSelection').style.display = 'none';
+    alert(`Bus #${data.bus_number} assigned successfully!`);
+}
+
+function handleSeatCountUpdated(data) {
+    console.log('✓ Seat count updated:', data);
+    occupiedSeats = data.occupied;
+    totalSeats = data.total;
+    updateSeatDisplay();
+    
+    if (data.is_full) {
+        alert('Bus is now at full capacity!');
+    }
+}
+
+function handleBusSeatStatus(data) {
+    console.log('📊 Bus seat status update:', data);
+    
+    // Update seat availability display for passengers
+    if (currentMode === 'passenger' && data.route_id === currentRoute) {
+        const seatAvailability = document.getElementById('seatAvailability');
+        const availableSeatsCount = document.getElementById('availableSeatsCount');
+        const approachingBusNumber = document.getElementById('approachingBusNumber');
+        const passengerOccupiedSeats = document.getElementById('passengerOccupiedSeats');
+        const passengerTotalSeats = document.getElementById('passengerTotalSeats');
+        
+        if (seatAvailability) {
+            seatAvailability.classList.remove('hidden');
+            approachingBusNumber.textContent = data.bus_id.substring(0, 8);
+            availableSeatsCount.textContent = data.available;
+            passengerOccupiedSeats.textContent = data.occupied;
+            passengerTotalSeats.textContent = data.total;
+            
+            // Change color based on availability
+            if (data.available <= 5) {
+                seatAvailability.style.background = 'linear-gradient(135deg, #F44336 0%, #D32F2F 100%)';
+            } else if (data.available <= 15) {
+                seatAvailability.style.background = 'linear-gradient(135deg, #FF9800 0%, #F57C00 100%)';
+            } else {
+                seatAvailability.style.background = 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)';
+            }
+        }
+    }
+}
+
+function handleBookingConfirmed(data) {
+    console.log('✓ Booking confirmed:', data);
+    alert(`Seat booked successfully! Bus #${data.bus_number}, Seat #${data.seat_number}`);
+    isPriorityPassenger = false;
+    document.getElementById('priorityBadge').classList.add('hidden');
+}
+
+function handleBookingPriority(data) {
+    console.log('⭐ Added to priority queue:', data);
+    alert(data.message);
+    isPriorityPassenger = true;
+    queuePosition = data.queue_position;
+    
+    const priorityBadge = document.getElementById('priorityBadge');
+    const queuePositionSpan = document.getElementById('queuePosition');
+    
+    if (priorityBadge) {
+        priorityBadge.classList.remove('hidden');
+        queuePositionSpan.textContent = queuePosition;
+    }
+}
+
+function handleBookingError(data) {
+    console.error('❌ Booking error:', data);
+    alert(data.message || 'Failed to book seat. Please try again.');
+}
+
+function handlePriorityCount(data) {
+    console.log('📊 Priority count:', data);
+    // Update driver UI with priority passenger counts
+    if (currentMode === 'bus' && data.route_id === currentRoute) {
+        updateDriverWaitingList(data);
+    }
+}
+
+function handleSeatStatus(data) {
+    console.log('📊 Seat status:', data);
+    occupiedSeats = data.occupied;
+    totalSeats = data.total;
+    updateSeatDisplay();
+}
+
+function updateSeatDisplay() {
+    const occupiedSeatsElem = document.getElementById('occupiedSeats');
+    const totalSeatsElem = document.getElementById('totalSeats');
+    const seatWarning = document.getElementById('seatWarning');
+    
+    if (occupiedSeatsElem) {
+        occupiedSeatsElem.textContent = occupiedSeats;
+    }
+    
+    if (totalSeatsElem) {
+        totalSeatsElem.textContent = totalSeats;
+    }
+    
+    // Show warning if approaching capacity
+    if (seatWarning) {
+        if (occupiedSeats >= totalSeats - 5 && occupiedSeats < totalSeats) {
+            seatWarning.classList.remove('hidden');
+        } else {
+            seatWarning.classList.add('hidden');
+        }
+    }
+    
+    // Auto-toggle capacity status if full
+    if (occupiedSeats >= totalSeats && !isBusFull) {
+        const capacityToggle = document.getElementById('capacityToggle');
+        if (capacityToggle && !capacityToggle.checked) {
+            capacityToggle.checked = true;
+            capacityToggle.dispatchEvent(new Event('change'));
+        }
+    }
+}
+
+function updateDriverWaitingList(priorityData) {
+    const driverWaitingList = document.getElementById('driverWaitingList');
+    if (!driverWaitingList || !currentRoute) return;
+    
+    const stops = window.stopsData[currentRoute];
+    if (!stops) return;
+    
+    let html = '';
+    
+    if (priorityData && priorityData.counts) {
+        Object.entries(priorityData.counts).forEach(([stopId, count]) => {
+            if (count > 0) {
+                const stop = stops.find(s => s.id === parseInt(stopId));
+                const stopName = stop ? stop.name : `Stop ${stopId}`;
+                
+                html += `
+                    <div class="waiting-list-item" style="border-left: 4px solid #FF9800;">
+                        <span>⭐ ${stopName}</span>
+                        <span class="waiting-count" style="background: #FF9800;">${count} priority</span>
+                    </div>
+                `;
+            }
+        });
+    }
+    
+    // Also show regular waiting passengers
+    if (waiting_passengers && waiting_passengers[currentRoute]) {
+        Object.entries(waiting_passengers[currentRoute]).forEach(([stopId, count]) => {
+            if (count > 0) {
+                const stop = stops.find(s => s.id === parseInt(stopId));
+                const stopName = stop ? stop.name : `Stop ${stopId}`;
+                
+                // Check if already shown as priority
+                const hasPriority = priorityData && priorityData.counts && priorityData.counts[stopId];
+                if (!hasPriority) {
+                    html += `
+                        <div class="waiting-list-item">
+                            <span>${stopName}</span>
+                            <span class="waiting-count">${count} waiting</span>
+                        </div>
+                    `;
+                }
+            }
+        });
+    }
+    
+    if (html === '') {
+        html = '<p style="text-align: center; color: #999; padding: 20px;">No passengers waiting</p>';
+    }
+    
+    driverWaitingList.innerHTML = html;
 }
 
 // Bus Capacity Toggle Handler
@@ -395,6 +596,118 @@ if (capacityToggle) {
             
             console.log(`✓ Bus capacity updated: ${isBusFull ? 'FULL' : 'AVAILABLE'}`);
         }
+    });
+}
+
+// Bus Number Selection Handler
+const setBusNumberBtn = document.getElementById('setBusNumber');
+const busNumberInput = document.getElementById('busNumberInput');
+
+if (setBusNumberBtn && busNumberInput) {
+    setBusNumberBtn.addEventListener('click', function() {
+        const busNumber = parseInt(busNumberInput.value);
+        
+        if (!busNumber || busNumber < 1 || busNumber > 99) {
+            alert('Please enter a valid bus number (1-99)');
+            return;
+        }
+        
+        if (!myBusId || !currentRoute) {
+            alert('Please wait for bus ID assignment');
+            return;
+        }
+        
+        socket.emit('driver_select_bus', {
+            bus_id: myBusId,
+            route_id: currentRoute,
+            bus_number: busNumber
+        });
+        
+        console.log(`✓ Requesting bus number: ${busNumber}`);
+    });
+    
+    // Allow Enter key to submit
+    busNumberInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            setBusNumberBtn.click();
+        }
+    });
+}
+
+// Seat Counter Handlers
+const incrementSeatsBtn = document.getElementById('incrementSeats');
+const decrementSeatsBtn = document.getElementById('decrementSeats');
+
+if (incrementSeatsBtn) {
+    incrementSeatsBtn.addEventListener('click', function() {
+        if (!myBusId || !currentRoute) {
+            alert('Please start sharing location first');
+            return;
+        }
+        
+        socket.emit('update_seat_count', {
+            bus_id: myBusId,
+            route_id: currentRoute,
+            action: 'increment'
+        });
+        
+        console.log('✓ Incrementing seat count');
+    });
+}
+
+if (decrementSeatsBtn) {
+    decrementSeatsBtn.addEventListener('click', function() {
+        if (!myBusId || !currentRoute) {
+            alert('Please start sharing location first');
+            return;
+        }
+        
+        socket.emit('update_seat_count', {
+            bus_id: myBusId,
+            route_id: currentRoute,
+            action: 'decrement'
+        });
+        
+        console.log('✓ Decrementing seat count');
+    });
+}
+
+// Passenger Booking Handler
+const bookSeatBtn = document.getElementById('bookSeat');
+
+if (bookSeatBtn) {
+    bookSeatBtn.addEventListener('click', function() {
+        const stopSelect = document.getElementById('waitingStopSelect');
+        const stopId = parseInt(stopSelect.value);
+        
+        if (!stopId) {
+            alert('Please select your stop first');
+            return;
+        }
+        
+        if (!currentRoute) {
+            alert('Please select a route first');
+            return;
+        }
+        
+        // Get the closest bus
+        const busIds = Object.keys(busMarkers);
+        if (busIds.length === 0) {
+            alert('No buses are currently active on this route');
+            return;
+        }
+        
+        // For simplicity, book on the first available bus
+        // In a real app, this would be the closest bus
+        const busId = busIds[0];
+        
+        socket.emit('passenger_booking', {
+            route_id: currentRoute,
+            stop_id: stopId,
+            bus_id: busId
+        });
+        
+        console.log(`✓ Booking seat for stop ${stopId} on bus ${busId}`);
     });
 }
 
@@ -666,6 +979,12 @@ document.getElementById('startSharing').addEventListener('click', async () => {
     
     document.getElementById('driverStats').classList.remove('hidden');
     
+    // Request initial seat status
+    socket.emit('get_seat_status', { bus_id: myBusId });
+    
+    // Request priority passenger counts
+    socket.emit('get_priority_count', { route_id: currentRoute });
+    
     const wakeLockEnabled = await requestWakeLock();
     if (wakeLockEnabled) {
         console.log('✓ Screen will stay on while sharing location');
@@ -935,6 +1254,32 @@ async function loadActiveBuses() {
                 activeBusIds.push(bus.bus_id);
                 const direction = bus.direction || 'forward';
                 updateBusMarker(bus.bus_id, bus.lat, bus.lng, false, bus.driver_name, direction);
+                
+                // Update seat availability display
+                if (currentMode === 'passenger') {
+                    const seatAvailability = document.getElementById('seatAvailability');
+                    const availableSeatsCount = document.getElementById('availableSeatsCount');
+                    const approachingBusNumber = document.getElementById('approachingBusNumber');
+                    const passengerOccupiedSeats = document.getElementById('passengerOccupiedSeats');
+                    const passengerTotalSeats = document.getElementById('passengerTotalSeats');
+                    
+                    if (seatAvailability && bus.available_seats !== undefined) {
+                        seatAvailability.classList.remove('hidden');
+                        approachingBusNumber.textContent = bus.bus_number || bus.bus_id.substring(0, 8);
+                        availableSeatsCount.textContent = bus.available_seats;
+                        passengerOccupiedSeats.textContent = bus.occupied_seats || 0;
+                        passengerTotalSeats.textContent = bus.total_seats || 50;
+                        
+                        // Change color based on availability
+                        if (bus.available_seats <= 5) {
+                            seatAvailability.style.background = 'linear-gradient(135deg, #F44336 0%, #D32F2F 100%)';
+                        } else if (bus.available_seats <= 15) {
+                            seatAvailability.style.background = 'linear-gradient(135deg, #FF9800 0%, #F57C00 100%)';
+                        } else {
+                            seatAvailability.style.background = 'linear-gradient(135deg, #4CAF50 0%, #45a049 100%)';
+                        }
+                    }
+                }
             });
             
             Object.keys(busMarkers).forEach(busId => {
@@ -959,6 +1304,7 @@ async function loadActiveBuses() {
             
             document.getElementById('passengerCurrentStopDisplay').classList.add('hidden');
             document.getElementById('passengerProgressContainer').classList.add('hidden');
+            document.getElementById('seatAvailability').classList.add('hidden');
         }
     } catch (error) {
         console.error('❌ Error loading active buses:', error);
@@ -1278,6 +1624,12 @@ console.log('✓ Next stop display for passengers');
 console.log('✓ Distance progress bar for Driver & Passenger modes');
 console.log('✓ OSRM waypoint-based distance (99% accuracy)');
 console.log('✓ TradingView-style animations enabled');
+console.log('✓ Seat management system (50 seats per bus)');
+console.log('✓ Bus number selection for multiple buses');
+console.log('✓ Manual seat counter (+/- buttons)');
+console.log('✓ Priority queue system for overflow passengers');
+console.log('✓ Real-time seat availability display');
+console.log('✓ Passenger booking system');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
