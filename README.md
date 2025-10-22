@@ -19,6 +19,9 @@ A production-ready, real-time bus tracking system with **98-99% accurate distanc
 - **Bidirectional Routes** - Supports forward and backward journey tracking
 - **Zero API Costs** - All distances pre-calculated and cached
 - **Offline Capable** - Works without external API dependencies after initial setup
+- **Seat Management System** - 50-seat capacity with real-time availability tracking
+- **Priority Queue** - Automatic overflow management when buses reach capacity
+- **Multiple Bus Support** - Track multiple buses on the same route with bus numbers
 
 ### 👨‍✈️ Driver Features
 - Mobile-friendly driver interface
@@ -26,6 +29,10 @@ A production-ready, real-time bus tracking system with **98-99% accurate distanc
 - Route and direction selection
 - Start/Stop journey controls
 - Real-time position broadcasting
+- **Bus number selection** (for multiple buses on same route)
+- **Manual seat counter** with +/- buttons (50 seats default)
+- **Waiting passengers display** (regular + priority passengers)
+- **Automatic capacity alerts** when bus reaches full capacity
 
 ### 🧑‍🦰 Passenger Features
 - Select route and destination stop
@@ -33,6 +40,102 @@ A production-ready, real-time bus tracking system with **98-99% accurate distanc
 - Live bus position on map
 - Estimated arrival information
 - Mobile-responsive interface
+- **Real-time seat availability** display per bus
+- **Seat booking system** with instant confirmation
+- **Priority queue** when bus is full (automatic overflow to next bus)
+- **Bus number display** to identify which bus is approaching
+
+---
+
+## 💺 Seat Management & Priority Queue System
+
+### Overview
+The bus tracking system includes a comprehensive seat management system that allows drivers to track passenger capacity and automatically manages overflow passengers through a priority queue system.
+
+### Features
+
+#### For Drivers:
+1. **Bus Number Selection**
+   - Assign a unique bus number (1, 2, 3, etc.) when starting your shift
+   - Helps passengers identify which bus is arriving
+   - Essential for routes with multiple buses operating simultaneously
+
+2. **Manual Seat Counter**
+   - Display shows: "Occupied: X / 50"
+   - Use +/- buttons to manually adjust occupied seat count
+   - Visual warning when approaching capacity (45+ seats)
+   - Automatic full capacity alert at 50/50
+
+3. **Real-time Waiting Passengers**
+   - See how many passengers are waiting at each stop
+   - Priority passengers highlighted with ⭐ (overflow from previous full bus)
+   - Regular waiting passengers shown separately
+
+#### For Passengers:
+1. **Real-time Seat Availability**
+   - See available seats on approaching bus
+   - Color-coded display:
+     - 🟢 Green: 16+ seats available
+     - 🟠 Orange: 6-15 seats available
+     - 🔴 Red: ≤5 seats available
+   - Bus number displayed (e.g., "Bus #2")
+
+2. **Seat Booking System**
+   - Click "Book Seat" to reserve your spot
+   - Instant confirmation with seat number
+   - Shows: "Seat booked successfully! Bus #2, Seat #15"
+
+3. **Priority Queue (Automatic Overflow)**
+   - If bus is full (50/50), you're automatically added to priority queue
+   - Priority passengers get FIRST PRIORITY on the next bus
+   - Badge shows: "⭐ Priority Passenger - You'll board the next bus first!"
+   - Queue position displayed
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Normal Operation                           │
+├─────────────────────────────────────────────────────────┤
+│  1. Passenger selects stop and clicks "Book Seat"      │
+│  2. System checks bus capacity (X/50)                  │
+│  3. If seats available → Booking confirmed             │
+│  4. Occupied count increases automatically             │
+│  5. All passengers see updated seat availability       │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│           Bus Full - Overflow to Priority Queue         │
+├─────────────────────────────────────────────────────────┤
+│  1. Bus #1 reaches 50/50 capacity                      │
+│  2. New booking attempt triggers priority queue        │
+│  3. Passenger added to priority queue for stop         │
+│  4. Shows: "Bus full. You are priority for next bus"  │
+│  5. Bus #2 driver sees priority passengers at stops   │
+│  6. Priority passengers board Bus #2 first             │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Configuration
+
+**Default Settings:**
+- Total Seats per Bus: 50 (48 passenger + 2 crew)
+- Capacity Warning: Triggers at 45+ seats
+- Auto-full toggle: Activates at 50/50
+
+**Customizable:**
+```python
+# In app.py, change default seat count:
+bus_seats = defaultdict(lambda: {'occupied': 0, 'total': 60, 'bus_number': None})
+```
+
+### Real-time Synchronization
+
+All seat operations are synchronized in real-time via Socket.IO:
+- Driver manual seat adjustments → Broadcast to all passengers
+- Passenger bookings → Update driver's occupied count
+- Capacity status changes → Update bus visibility for passengers
+- Priority queue updates → Notify drivers of priority passengers
 
 ---
 
@@ -336,15 +439,25 @@ python app.py
 
 ## 🚧 Roadmap
 
+### Recently Completed ✅
+- [x] Seat management system (50 seats per bus)
+- [x] Bus number selection for multiple buses
+- [x] Manual seat counter with +/- buttons
+- [x] Priority queue for overflow passengers
+- [x] Real-time seat availability display
+- [x] Passenger booking system
+- [x] Waiting passenger count (regular + priority)
+
 ### Planned Features
 - [ ] Multi-language support (Tamil, Hindi, English)
 - [ ] Push notifications for passenger alerts
 - [ ] Historical route analytics
 - [ ] Driver performance dashboard
-- [ ] Estimated arrival time (ETA) predictions
 - [ ] Offline mode with service workers
 - [ ] Mobile apps (Android/iOS)
 - [ ] Admin dashboard for route management
+- [ ] QR code-based seat verification
+- [ ] Passenger feedback system
 
 ---
 
@@ -480,17 +593,60 @@ socket.on('bus_location_update', {
     bus_id: 'BUS001',
     lat: 9.9720,
     lng: 78.1394,
-    distance_from_start: 5.234
+    distance_from_start: 5.234,
+    occupied_seats: 23,
+    total_seats: 50,
+    bus_number: 2
+})
+
+// Seat Management Events
+
+// Driver selects bus number
+socket.emit('driver_select_bus', {
+    bus_id: 'BUS001',
+    route_id: '48AC',
+    bus_number: 2
+})
+
+// Driver adjusts seat count
+socket.emit('update_seat_count', {
+    bus_id: 'BUS001',
+    route_id: '48AC',
+    action: 'increment' // or 'decrement'
+})
+
+// Passenger books seat
+socket.emit('passenger_booking', {
+    route_id: '48AC',
+    stop_id: 5,
+    bus_id: 'BUS001'
+})
+
+// Server confirms booking
+socket.on('booking_confirmed', {
+    bus_id: 'BUS001',
+    bus_number: 2,
+    seat_number: 24,
+    status: 'confirmed'
+})
+
+// Server notifies priority queue
+socket.on('booking_priority', {
+    status: 'priority',
+    message: 'Bus is full. You are added to priority queue for next bus.',
+    queue_position: 3
 })
 ```
 
 **HTTP Endpoints:**
 
-- `GET /driver` - Driver interface
-- `GET /passenger` - Passenger interface
-- `POST /api/driver/login` - Driver authentication
+- `GET /` - Main interface (driver/passenger mode selection)
+- `POST /api/driver/authenticate` - Driver authentication
 - `GET /api/routes` - Get all routes
-- `GET /api/routes/<route_id>/stops` - Get route stops
+- `GET /api/active_buses/<route_id>` - Get active buses on route (includes seat info)
+- `GET /api/waiting_stats` - Get waiting passengers count
+- `GET /api/priority_queue/<route_id>` - Get priority queue information
+- `GET /api/passenger_distance/<route_id>/<bus_id>/<stop_id>` - Get accurate distance to stop
 
 ---
 

@@ -197,6 +197,10 @@ waiting_passengers = defaultdict(lambda: defaultdict(int))
 authenticated_drivers = {}
 bus_logged_locations = defaultdict(set)
 
+# Seat management data structures
+bus_seats = defaultdict(lambda: {'occupied': 0, 'total': 50, 'bus_number': None})
+priority_queue = defaultdict(lambda: defaultdict(list))  # {route_id: {stop_id: [passenger_ids]}}
+
 # Bidirectional tracking data structures
 bus_last_passed_stop = defaultdict(lambda: None)
 bus_direction = defaultdict(lambda: None)
@@ -1362,6 +1366,23 @@ def get_routes():
 def get_waiting_stats():
     return jsonify(dict(waiting_passengers))
 
+@app.route('/api/priority_queue/<route_id>')
+def get_priority_queue(route_id):
+    """Get priority queue information for a route"""
+    priority_data = {}
+    if route_id in priority_queue:
+        for stop_id, passengers in priority_queue[route_id].items():
+            priority_data[stop_id] = {
+                'count': len(passengers),
+                'passengers': passengers
+            }
+    
+    return jsonify({
+        'route_id': route_id,
+        'priority_queue': priority_data,
+        'total_priority': sum(len(p) for p in priority_queue[route_id].values()) if route_id in priority_queue else 0
+    })
+
 @app.route('/api/active_buses/<route_id>')
 def get_active_buses(route_id):
     """Filter out full buses for passengers"""
@@ -1385,7 +1406,11 @@ def get_active_buses(route_id):
                 'current_stop': bus_data.get('current_stop', None),
                 'is_full': bus_data.get('is_full', False),
                 'progress_pct': bus_data.get('progress_pct', 0),
-                'distance_from_start': bus_data.get('distance_from_start', 0)
+                'distance_from_start': bus_data.get('distance_from_start', 0),
+                'occupied_seats': bus_data.get('occupied_seats', 0),
+                'total_seats': bus_data.get('total_seats', 50),
+                'available_seats': bus_data.get('available_seats', 50),
+                'bus_number': bus_data.get('bus_number', 'N/A')
             })
     return jsonify({'buses': buses})
 
@@ -1777,6 +1802,12 @@ def handle_bus_location(data):
     # Get bus capacity status
     is_full = bus_capacity_status.get(bus_id, False)
     
+    # Get seat information
+    seat_data = bus_seats[bus_id]
+    occupied_seats = seat_data['occupied']
+    total_seats = seat_data['total']
+    bus_number = seat_data.get('bus_number', 'N/A')
+    
     # Store bus location with enhanced data
     with bus_data_lock:
         active_buses[route_id][bus_id] = {
@@ -1797,7 +1828,11 @@ def handle_bus_location(data):
             'current_stop': current_stop_name,
             'current_stop_id': current_stop_id,
             'is_full': is_full,
-            'distance_from_start': round(distance_from_start, 3)
+            'distance_from_start': round(distance_from_start, 3),
+            'occupied_seats': occupied_seats,
+            'total_seats': total_seats,
+            'available_seats': total_seats - occupied_seats,
+            'bus_number': bus_number
         }
     
     # Log location
@@ -1847,7 +1882,11 @@ def handle_bus_location(data):
         'progress_pct': round(progress_pct, 1),
         'current_stop': current_stop_name,
         'current_stop_id': current_stop_id,
-        'is_full': is_full
+        'is_full': is_full,
+        'occupied_seats': occupied_seats,
+        'total_seats': total_seats,
+        'available_seats': total_seats - occupied_seats,
+        'bus_number': bus_number
     })
     
     # Broadcast to passengers (only if bus is not full)
@@ -1871,7 +1910,11 @@ def handle_bus_location(data):
             'current_stop_id': current_stop_id,
             'is_full': is_full,
             'progress_pct': round(progress_pct, 1),
-            'distance_from_start': round(distance_from_start, 3)
+            'distance_from_start': round(distance_from_start, 3),
+            'occupied_seats': occupied_seats,
+            'total_seats': total_seats,
+            'available_seats': total_seats - occupied_seats,
+            'bus_number': bus_number
         }, room=route_id, include_self=False)
     
     # Update bus count
@@ -1967,6 +2010,243 @@ def handle_passenger_waiting(data):
     }, room=route_id)
     
     socketio.emit('waiting_stats', dict(waiting_passengers))
+
+@socketio.on('driver_select_bus')
+def handle_driver_select_bus(data):
+    """Handle bus number selection by driver"""
+    if request.sid not in authenticated_drivers:
+        emit('authentication_required', {'message': 'Please authenticate first'})
+        return
+    
+    bus_id = data.get('bus_id')
+    bus_number = data.get('bus_number')
+    route_id = data.get('route_id')
+    
+    if not all([bus_id, bus_number, route_id]):
+        emit('error', {'message': 'Missing required fields'})
+        return
+    
+    # Store bus number
+    bus_seats[bus_id]['bus_number'] = bus_number
+    
+    # Update active bus data
+    if route_id in active_buses and bus_id in active_buses[route_id]:
+        active_buses[route_id][bus_id]['bus_number'] = bus_number
+    
+    print(f"✓ Bus {bus_id} assigned number: {bus_number}")
+    
+    emit('bus_number_confirmed', {
+        'bus_id': bus_id,
+        'bus_number': bus_number,
+        'message': f'Bus #{bus_number} assigned successfully'
+    })
+
+@socketio.on('update_seat_count')
+def handle_update_seat_count(data):
+    """Handle manual seat count update by driver"""
+    if request.sid not in authenticated_drivers:
+        emit('authentication_required', {'message': 'Please authenticate first'})
+        return
+    
+    bus_id = data.get('bus_id')
+    route_id = data.get('route_id')
+    action = data.get('action')  # 'increment' or 'decrement'
+    
+    if not all([bus_id, route_id, action]):
+        emit('error', {'message': 'Missing required fields'})
+        return
+    
+    current_occupied = bus_seats[bus_id]['occupied']
+    total_seats = bus_seats[bus_id]['total']
+    
+    if action == 'increment' and current_occupied < total_seats:
+        bus_seats[bus_id]['occupied'] += 1
+    elif action == 'decrement' and current_occupied > 0:
+        bus_seats[bus_id]['occupied'] -= 1
+    
+    new_occupied = bus_seats[bus_id]['occupied']
+    is_full = new_occupied >= total_seats
+    
+    # Update capacity status
+    bus_capacity_status[bus_id] = is_full
+    
+    # Update active bus data
+    if route_id in active_buses and bus_id in active_buses[route_id]:
+        active_buses[route_id][bus_id]['occupied_seats'] = new_occupied
+        active_buses[route_id][bus_id]['total_seats'] = total_seats
+        active_buses[route_id][bus_id]['is_full'] = is_full
+    
+    print(f"✓ Bus {bus_id} seats: {new_occupied}/{total_seats}")
+    
+    # Emit to driver
+    emit('seat_count_updated', {
+        'bus_id': bus_id,
+        'occupied': new_occupied,
+        'total': total_seats,
+        'is_full': is_full
+    })
+    
+    # Broadcast to all passengers on route
+    socketio.emit('bus_seat_status', {
+        'route_id': route_id,
+        'bus_id': bus_id,
+        'occupied': new_occupied,
+        'total': total_seats,
+        'available': total_seats - new_occupied,
+        'is_full': is_full
+    }, room=route_id)
+    
+    # If bus just became full, remove from passenger view
+    if is_full:
+        socketio.emit('bus_removed', {
+            'route_id': route_id,
+            'bus_id': bus_id,
+            'reason': 'full'
+        }, room=route_id)
+
+@socketio.on('passenger_booking')
+def handle_passenger_booking(data):
+    """Handle passenger seat booking"""
+    route_id = data.get('route_id')
+    stop_id = data.get('stop_id')
+    passenger_id = data.get('passenger_id', request.sid)
+    bus_id = data.get('bus_id')
+    
+    if not all([route_id, stop_id]):
+        emit('booking_error', {'message': 'Missing required fields'})
+        return
+    
+    # Find available bus or assign to priority queue
+    if bus_id:
+        # Specific bus requested
+        if bus_id in bus_seats:
+            current_occupied = bus_seats[bus_id]['occupied']
+            total_seats = bus_seats[bus_id]['total']
+            
+            if current_occupied < total_seats:
+                # Book seat
+                bus_seats[bus_id]['occupied'] += 1
+                emit('booking_confirmed', {
+                    'bus_id': bus_id,
+                    'bus_number': bus_seats[bus_id].get('bus_number', 'N/A'),
+                    'seat_number': current_occupied + 1,
+                    'status': 'confirmed'
+                })
+                
+                # Broadcast seat status update
+                socketio.emit('bus_seat_status', {
+                    'route_id': route_id,
+                    'bus_id': bus_id,
+                    'occupied': bus_seats[bus_id]['occupied'],
+                    'total': total_seats,
+                    'available': total_seats - bus_seats[bus_id]['occupied'],
+                    'is_full': bus_seats[bus_id]['occupied'] >= total_seats
+                }, room=route_id)
+                
+                print(f"✓ Passenger {passenger_id} booked seat on bus {bus_id}")
+            else:
+                # Bus full - add to priority queue
+                priority_queue[route_id][stop_id].append({
+                    'passenger_id': passenger_id,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+                emit('booking_priority', {
+                    'status': 'priority',
+                    'message': 'Bus is full. You are added to priority queue for next bus.',
+                    'queue_position': len(priority_queue[route_id][stop_id])
+                })
+                
+                print(f"✓ Passenger {passenger_id} added to priority queue for stop {stop_id}")
+    else:
+        # No specific bus - find available or add to priority
+        available_bus = None
+        
+        if route_id in active_buses:
+            for bid, bdata in active_buses[route_id].items():
+                if not bus_capacity_status.get(bid, False):
+                    current_occupied = bus_seats[bid]['occupied']
+                    total_seats = bus_seats[bid]['total']
+                    
+                    if current_occupied < total_seats:
+                        available_bus = bid
+                        break
+        
+        if available_bus:
+            # Book on available bus
+            bus_seats[available_bus]['occupied'] += 1
+            emit('booking_confirmed', {
+                'bus_id': available_bus,
+                'bus_number': bus_seats[available_bus].get('bus_number', 'N/A'),
+                'seat_number': bus_seats[available_bus]['occupied'],
+                'status': 'confirmed'
+            })
+            
+            # Broadcast update
+            socketio.emit('bus_seat_status', {
+                'route_id': route_id,
+                'bus_id': available_bus,
+                'occupied': bus_seats[available_bus]['occupied'],
+                'total': bus_seats[available_bus]['total'],
+                'available': bus_seats[available_bus]['total'] - bus_seats[available_bus]['occupied'],
+                'is_full': bus_seats[available_bus]['occupied'] >= bus_seats[available_bus]['total']
+            }, room=route_id)
+        else:
+            # All buses full - add to priority queue
+            priority_queue[route_id][stop_id].append({
+                'passenger_id': passenger_id,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            emit('booking_priority', {
+                'status': 'priority',
+                'message': 'All buses are full. You are added to priority queue for next bus.',
+                'queue_position': len(priority_queue[route_id][stop_id])
+            })
+
+@socketio.on('get_priority_count')
+def handle_get_priority_count(data):
+    """Get count of priority passengers per stop"""
+    route_id = data.get('route_id')
+    
+    if not route_id:
+        emit('priority_count', {'count': 0})
+        return
+    
+    priority_counts = {}
+    if route_id in priority_queue:
+        for stop_id, passengers in priority_queue[route_id].items():
+            priority_counts[stop_id] = len(passengers)
+    
+    emit('priority_count', {
+        'route_id': route_id,
+        'counts': priority_counts,
+        'total': sum(priority_counts.values())
+    })
+
+@socketio.on('get_seat_status')
+def handle_get_seat_status(data):
+    """Get current seat status for a bus"""
+    bus_id = data.get('bus_id')
+    
+    if not bus_id or bus_id not in bus_seats:
+        emit('seat_status', {
+            'occupied': 0,
+            'total': 50,
+            'available': 50,
+            'is_full': False
+        })
+        return
+    
+    seat_data = bus_seats[bus_id]
+    emit('seat_status', {
+        'bus_id': bus_id,
+        'bus_number': seat_data.get('bus_number', 'N/A'),
+        'occupied': seat_data['occupied'],
+        'total': seat_data['total'],
+        'available': seat_data['total'] - seat_data['occupied'],
+        'is_full': seat_data['occupied'] >= seat_data['total']
+    })
 
 # ==================== MAIN SERVER STARTUP ====================
 if __name__ == '__main__':

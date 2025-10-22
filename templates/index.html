@@ -952,6 +952,48 @@
                 <h3>👤 Driver: <span id="driverName">Not Set</span></h3>
                 <p>🚌 Bus ID: <span id="busId">Waiting...</span></p>
                 <p>🛣️ Route: <span id="busRoute"></span></p>
+                <p id="busNumberDisplay">🚍 Bus Number: <span id="busNumberValue">Not Set</span></p>
+            </div>
+
+            <!-- Bus Number Selection -->
+            <div id="busNumberSelection" class="card" style="background: var(--md-primary-container); padding: 16px; margin-bottom: 16px;">
+                <h4 style="margin-bottom: 12px; color: var(--md-on-primary-container);">Select Bus Number</h4>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <input type="number" id="busNumberInput" min="1" max="99" placeholder="Bus #" 
+                           style="width: 100px; padding: 12px; font-size: 16px; border: 2px solid var(--md-outline); border-radius: 8px;">
+                    <button id="setBusNumber" class="btn btn-success" style="min-width: auto; padding: 12px 24px;">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        Set Bus Number
+                    </button>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-primary-container); margin-top: 8px;">
+                    ℹ️ Select your bus number (1, 2, 3, etc.) if multiple buses operate on the same route
+                </p>
+            </div>
+
+            <!-- Seat Counter -->
+            <div class="capacity-toggle" style="background: var(--md-surface); border: 2px solid var(--md-primary);">
+                <h4 style="color: var(--md-primary);">💺 Seat Management</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin: 16px 0;">
+                    <button id="decrementSeats" class="btn btn-danger" style="min-width: auto; width: 60px; height: 60px; border-radius: 50%; font-size: 24px; padding: 0;">
+                        <span class="material-symbols-outlined" style="font-size: 32px;">remove</span>
+                    </button>
+                    <div style="text-align: center; flex: 1;">
+                        <div style="font-size: 14px; color: var(--md-on-surface-variant); margin-bottom: 4px;">Occupied Seats</div>
+                        <div style="font-size: 32px; font-weight: bold; color: var(--md-primary);">
+                            <span id="occupiedSeats">0</span> / <span id="totalSeats">50</span>
+                        </div>
+                        <div id="seatWarning" class="hidden" style="background: #FFA726; color: white; padding: 4px 12px; border-radius: 16px; margin-top: 8px; font-size: 12px; font-weight: 600;">
+                            ⚠️ Approaching Capacity
+                        </div>
+                    </div>
+                    <button id="incrementSeats" class="btn btn-success" style="min-width: auto; width: 60px; height: 60px; border-radius: 50%; font-size: 24px; padding: 0;">
+                        <span class="material-symbols-outlined" style="font-size: 32px;">add</span>
+                    </button>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); text-align: center;">
+                    ℹ️ Use +/- buttons to update occupied seat count manually
+                </p>
             </div>
 
             <div id="currentStopDisplay" class="hidden">
@@ -1037,6 +1079,12 @@
                         <div class="stat-value"><span id="etaToStop">--</span> min</div>
                     </div>
                 </div>
+
+                <!-- Waiting Passengers Info for Driver -->
+                <div style="margin-top: 20px;">
+                    <h4 style="color: var(--md-on-surface); margin-bottom: 12px;">👥 Waiting Passengers</h4>
+                    <div id="driverWaitingList" class="waiting-list" style="max-height: 200px;"></div>
+                </div>
             </div>
 
             <hr class="section-divider">
@@ -1067,6 +1115,25 @@
 
         <div id="passengerUI" class="card hidden">
             <h2>🚏 Passenger View - Route <span id="passengerRoute"></span></h2>
+
+            <!-- Seat Availability Display -->
+            <div id="seatAvailability" class="hidden" style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; padding: 16px; border-radius: 12px; margin-bottom: 16px; text-align: center;">
+                <div style="font-size: 14px; margin-bottom: 8px;">🚌 Bus #<span id="approachingBusNumber">--</span></div>
+                <div style="font-size: 24px; font-weight: bold; margin-bottom: 4px;">
+                    <span id="availableSeatsCount">--</span> Seats Available
+                </div>
+                <div style="font-size: 12px; opacity: 0.9;">
+                    <span id="passengerOccupiedSeats">0</span> / <span id="passengerTotalSeats">50</span> occupied
+                </div>
+            </div>
+
+            <!-- Priority Queue Badge -->
+            <div id="priorityBadge" class="hidden" style="background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%); color: white; padding: 12px 20px; border-radius: 20px; margin-bottom: 16px; text-align: center; font-weight: 600;">
+                ⭐ Priority Passenger - You'll board the next bus first!
+                <div style="font-size: 12px; margin-top: 4px; opacity: 0.9;">
+                    Queue Position: <span id="queuePosition">--</span>
+                </div>
+            </div>
 
             <div class="info-panel">
                 <div class="stats-grid" style="margin: 0;">
@@ -1132,10 +1199,16 @@
                     <select id="waitingStopSelect">
                         <option value="">-- Select your stop --</option>
                     </select>
-                    <button id="waitingToggle" class="btn btn-info">
-                        <span class="material-symbols-outlined">pan_tool</span>
-                        I'm Waiting at This Stop
-                    </button>
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+                        <button id="bookSeat" class="btn btn-success" style="min-width: 160px;">
+                            <span class="material-symbols-outlined">event_seat</span>
+                            Book Seat
+                        </button>
+                        <button id="waitingToggle" class="btn btn-info" style="min-width: 160px;">
+                            <span class="material-symbols-outlined">pan_tool</span>
+                            I'm Waiting
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1143,6 +1216,16 @@
 
             <div>
                 <h3 style="margin-bottom: 12px;">👥 Passengers Waiting</h3>
+                <div style="margin-bottom: 12px; display: flex; gap: 12px; justify-content: center;">
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <div style="width: 12px; height: 12px; background: #FF9800; border-radius: 50%;"></div>
+                        <span style="font-size: 12px; color: var(--md-on-surface-variant);">Priority</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <div style="width: 12px; height: 12px; background: #2196F3; border-radius: 50%;"></div>
+                        <span style="font-size: 12px; color: var(--md-on-surface-variant);">Regular</span>
+                    </div>
+                </div>
                 <div id="waitingList" class="waiting-list"></div>
             </div>
 
