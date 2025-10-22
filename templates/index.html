@@ -954,6 +954,67 @@
                 <p>🛣️ Route: <span id="busRoute"></span></p>
             </div>
 
+            <!-- Bus Number Selection -->
+            <div class="capacity-toggle" id="busNumberSection">
+                <h4>🚌 Bus Number</h4>
+                <div class="form-group">
+                    <label for="busNumberInput">Select or Enter Bus Number</label>
+                    <select id="busNumberInput" class="form-control">
+                        <option value="">-- Select Bus Number --</option>
+                        <option value="BUS-001">BUS-001</option>
+                        <option value="BUS-002">BUS-002</option>
+                        <option value="BUS-003">BUS-003</option>
+                        <option value="BUS-004">BUS-004</option>
+                        <option value="BUS-005">BUS-005</option>
+                        <option value="custom">Custom Number...</option>
+                    </select>
+                    <input type="text" id="customBusNumber" class="hidden" placeholder="Enter custom bus number" style="margin-top: 8px; padding: 14px 16px; width: 100%; border: 1px solid var(--md-outline); border-radius: 8px;">
+                    <button id="setBusNumberBtn" class="btn btn-primary" style="margin-top: 12px; width: 100%;">Set Bus Number</button>
+                </div>
+                <div id="busNumberDisplay" class="hidden" style="background: white; padding: 12px; border-radius: 8px; margin-top: 8px; text-align: center;">
+                    <strong>Bus Number:</strong> <span id="currentBusNumber" style="color: var(--md-primary); font-size: 18px; font-weight: 700;"></span>
+                </div>
+            </div>
+
+            <!-- Seat Counter -->
+            <div class="capacity-toggle">
+                <h4>💺 Seat Management (48 Passenger Seats + 2 Crew)</h4>
+                <div style="background: white; padding: 20px; border-radius: 8px;">
+                    <div style="text-align: center; margin-bottom: 16px;">
+                        <div style="font-size: 14px; color: var(--md-on-surface-variant); margin-bottom: 8px;">Occupied Seats</div>
+                        <div style="font-size: 48px; font-weight: 700; color: var(--md-primary);" id="occupiedSeatsDisplay">0</div>
+                        <div style="font-size: 14px; color: var(--md-on-surface-variant);">
+                            Available: <span id="availableSeatsDisplay" style="font-weight: 600; color: #4CAF50;">48</span> / 48
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 12px; justify-content: center; align-items: center;">
+                        <button id="decreaseSeatBtn" class="btn btn-danger" style="font-size: 24px; min-width: 60px; height: 60px; border-radius: 50%;">
+                            <span class="material-symbols-outlined" style="font-size: 32px;">remove</span>
+                        </button>
+                        <button id="increaseSeatBtn" class="btn btn-success" style="font-size: 24px; min-width: 60px; height: 60px; border-radius: 50%;">
+                            <span class="material-symbols-outlined" style="font-size: 32px;">add</span>
+                        </button>
+                    </div>
+                    <div style="margin-top: 16px; text-align: center;">
+                        <button id="resetSeatsBtn" class="btn btn-info" style="width: 100%;">Reset to 0</button>
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">
+                    ℹ️ Use +/- buttons to update occupied seats. Bus will automatically be marked as FULL when all seats are occupied.
+                </p>
+            </div>
+
+            <!-- Waiting Passenger Count -->
+            <div class="capacity-toggle">
+                <h4>👥 Waiting Passengers on Route</h4>
+                <div style="background: white; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 48px; font-weight: 700; color: #FF9800;" id="waitingPassengersDisplay">0</div>
+                    <div style="font-size: 14px; color: var(--md-on-surface-variant); margin-top: 8px;">
+                        Total waiting passengers across all stops
+                    </div>
+                </div>
+            </div>
+
             <div id="currentStopDisplay" class="hidden">
                 <div class="current-stop-badge">
                     <span class="material-symbols-outlined">location_on</span>
@@ -1067,6 +1128,43 @@
 
         <div id="passengerUI" class="card hidden">
             <h2>🚏 Passenger View - Route <span id="passengerRoute"></span></h2>
+
+            <!-- Seat Availability Info -->
+            <div class="capacity-toggle" id="seatAvailabilitySection">
+                <h4>💺 Seat Availability</h4>
+                <div style="background: white; padding: 16px; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-around; text-align: center;">
+                        <div>
+                            <div style="font-size: 14px; color: var(--md-on-surface-variant);">Bus Number</div>
+                            <div style="font-size: 24px; font-weight: 700; color: var(--md-primary);" id="passengerBusNumber">--</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: var(--md-on-surface-variant);">Available Seats</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #4CAF50;" id="passengerAvailableSeats">--</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 14px; color: var(--md-on-surface-variant);">Occupied</div>
+                            <div style="font-size: 24px; font-weight: 700; color: #FF9800;" id="passengerOccupiedSeats">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Priority Queue Info -->
+            <div class="capacity-toggle" id="priorityQueueSection" style="display: none;">
+                <h4>⏳ Priority Queue</h4>
+                <div style="background: linear-gradient(135deg, #FFA726 0%, #FB8C00 100%); color: white; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 18px; margin-bottom: 8px;">🚌 All buses are currently full</div>
+                    <div style="font-size: 14px; opacity: 0.9; margin-bottom: 16px;">You will be prioritized for the next available bus</div>
+                    <div style="background: rgba(255, 255, 255, 0.2); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-size: 12px; opacity: 0.9;">Your Position in Queue</div>
+                        <div style="font-size: 36px; font-weight: 700;" id="queuePosition">--</div>
+                    </div>
+                    <div style="font-size: 12px; opacity: 0.8;">
+                        <span id="queueLength">0</span> passengers waiting
+                    </div>
+                </div>
+            </div>
 
             <div class="info-panel">
                 <div class="stats-grid" style="margin: 0;">
