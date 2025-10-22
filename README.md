@@ -120,7 +120,7 @@ bustracker/
 |----------|------|-------|----------|------|
 | **48AC** | Thirupallai - Thirunagar | 28 | 17.6 km | City |
 | **23** | Thirupallai - Periyar | 17 | 9.1 km | City |
-| **madurai-saptur** | Sappur - Mattuthavani | 45 | 83.7 km | Intercity |
+| **madurai-saptur** | Saptur - Mattuthavani | 45 | 83.7 km | Intercity |
 
 ---
 
