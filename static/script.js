@@ -224,6 +224,54 @@ function initSocket() {
     socket.on('capacity_updated', (data) => {
         console.log('✓ Capacity updated:', data.message);
     });
+    
+    // Listen for reservation updates
+    socket.on('reservation_update', (data) => {
+        console.log('✓ Reservation update:', data);
+        // Update available seats display
+        animateValueChange('passengerAvailableSeats', data.available_seats, 'passengerSeatsCard');
+        animateValueChange('driverAvailableSeats', data.available_seats, 'driverSeatsCard');
+    });
+    
+    // Listen for reservation result
+    socket.on('reservation_result', (data) => {
+        const statusDiv = document.getElementById('reservationStatus');
+        statusDiv.classList.remove('success', 'error');
+        
+        if (data.success) {
+            statusDiv.classList.add('success');
+            statusDiv.textContent = data.message;
+        } else {
+            if (data.waiting) {
+                statusDiv.classList.add('error');
+                statusDiv.textContent = data.message;
+            } else {
+                statusDiv.classList.add('error');
+                statusDiv.textContent = data.message;
+            }
+        }
+        
+        // Clear status after 5 seconds
+        setTimeout(() => {
+            statusDiv.classList.remove('success', 'error');
+            statusDiv.textContent = '';
+        }, 5000);
+    });
+    
+    // Listen for reservation assigned from waiting list
+    socket.on('reservation_assigned', (data) => {
+        console.log('✓ Reservation assigned from waiting list:', data);
+        const statusDiv = document.getElementById('reservationStatus');
+        statusDiv.classList.remove('error');
+        statusDiv.classList.add('success');
+        statusDiv.textContent = data.message;
+        
+        // Clear after 5 seconds
+        setTimeout(() => {
+            statusDiv.classList.remove('success');
+            statusDiv.textContent = '';
+        }, 5000);
+    });
 }
 
 function handleDriverAuthentication(data) {
@@ -234,9 +282,9 @@ function handleDriverAuthentication(data) {
         driverAuthModal.style.display = 'none';
         console.log('✓ Driver authenticated successfully');
         
-        if (currentRoute) {
-            socket.emit('join_route', { route_id: currentRoute, mode: 'bus' });
-        }
+        // Show bus ID input after authentication
+        document.getElementById('busIdInput').classList.remove('hidden');
+        document.getElementById('busIdField').focus();
     } else {
         alert(data.message || 'Authentication failed');
         isAuthenticated = false;
@@ -367,6 +415,40 @@ function handleBusInfoUpdate(data) {
     } else {
         currentStopDisplay.classList.add('hidden');
     }
+    
+    // Show waiting passengers in driver UI
+    updateWaitingPassengersDisplay(data.waiting_passengers);
+}
+
+function updateWaitingPassengersDisplay(waitingData) {
+    const waitingList = document.getElementById('driverWaitingList');
+    if (!waitingList) return;
+    
+    if (!waitingData || Object.keys(waitingData).length === 0) {
+        waitingList.innerHTML = '<p style="text-align center; color: #999;">No passengers waiting currently</p>';
+        return;
+    }
+    
+    let html = '';
+    Object.entries(waitingData).forEach(([stopId, count]) => {
+        if (count > 0) {
+            const stop = window.stopsData[currentRoute]?.find(s => s.id === parseInt(stopId));
+            const stopName = stop ? stop.name : `Stop ${stopId}`;
+            
+            html += `
+                <div class="waiting-list-item">
+                    <span>${stopName}</span>
+                    <span class="waiting-count">${count} waiting</span>
+                </div>
+            `;
+        }
+    });
+    
+    if (html === '') {
+        html = '<p style="text-align center; color: #999;">No passengers waiting currently</p>';
+    }
+    
+    waitingList.innerHTML = html;
 }
 
 // Bus Capacity Toggle Handler
@@ -413,6 +495,18 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         driver_id: driverId,
         password: password
     });
+});
+document.getElementById('loginBtn').addEventListener('click', async () => {
+    console.log('DEBUG: Login button clicked');  // Add this line
+    const driverId = document.getElementById('loginDriverId').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    
+    // ... rest of the code
+    socket.emit('driver_authenticate', {
+        driver_id: driverId,
+        password: password
+    });
+    console.log('DEBUG: Emit sent to server');  // Add this line
 });
 
 document.getElementById('loginPassword').addEventListener('keypress', (e) => {
@@ -588,6 +682,7 @@ function setupBusMode() {
     mapContainer.classList.remove('hidden');
     
     document.getElementById('busRoute').textContent = currentRoute;
+    document.getElementById('busIdRouteDisplay').textContent = currentRoute;
     
     const stops = window.stopsData[currentRoute];
     if (stops && stops.length > 0) {
@@ -597,8 +692,12 @@ function setupBusMode() {
         initMap();
     }
     
+    loadWaitingStats();
+    
     console.log('✓ Bus mode setup complete');
 }
+
+
 
 function setupPassengerMode() {
     console.log('Setting up passenger mode...');
@@ -631,6 +730,9 @@ function setupPassengerMode() {
     socket.emit('join_route', { route_id: currentRoute, mode: 'passenger' });
     
     loadWaitingStats();
+    
+    // Make reserve seat button visible in passenger mode
+    document.getElementById('reserveBtn').classList.remove('hidden');
     
     console.log('✓ Passenger mode setup complete');
 }
@@ -1034,6 +1136,7 @@ function handleBusRemoved(data) {
         updateClosestBusETA();
     }
 }
+
 function updateClosestBusETA() {
     const allBusIds = Object.keys(busMarkers);
     
@@ -1188,6 +1291,8 @@ function handleWaitingUpdate(data) {
 function handleWaitingStats(data) {
     console.log('📊 Waiting stats:', data);
     updateWaitingDisplay(data);
+    // Also update driver waiting list
+    updateWaitingPassengersDisplay(data);
 }
 
 async function loadWaitingStats() {
@@ -1201,10 +1306,10 @@ async function loadWaitingStats() {
 }
 
 function updateWaitingDisplay(stats) {
-    const waitingList = document.getElementById('waitingList');
+    const waitingList = currentMode === 'bus' ? document.getElementById('driverWaitingList') : document.getElementById('waitingList');
     
     if (!stats || !stats[currentRoute]) {
-        waitingList.innerHTML = '<p style="text-align: center; color: #999;">No one waiting currently</p>';
+        waitingList.innerHTML = '<p style="text-align center; color: #999;">No one waiting currently</p>';
         return;
     }
     
@@ -1227,7 +1332,7 @@ function updateWaitingDisplay(stats) {
     });
     
     if (html === '') {
-        html = '<p style="text-align: center; color: #999;">No one waiting currently</p>';
+        html = '<p style="text-align center; color: #999;">No one waiting currently</p>';
     }
     
     waitingList.innerHTML = html;
@@ -1303,4 +1408,90 @@ window.addEventListener('load', () => {
         driver: !!document.getElementById('progressContainer'),
         passenger: !!document.getElementById('passengerProgressContainer')
     });
+});
+
+// Reserve Seat Button Logic
+document.getElementById('reserveBtn').addEventListener('click', () => {
+    if (!currentRoute) {
+        alert('No route selected.');
+        return;
+    }
+    
+    const selectedStopId = parseInt(document.getElementById('waitingStopSelect').value);
+    if (!selectedStopId) {
+        alert('Please select a stop first.');
+        return;
+    }
+    
+    const passengerName = document.getElementById('passengerNameInput').value.trim() || 'Anonymous';
+    
+    // Generate session ID for this reservation
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Show loading state
+    const reserveBtn = document.getElementById('reserveBtn');
+    const originalText = reserveBtn.textContent;
+    reserveBtn.textContent = 'Reserving...';
+    reserveBtn.disabled = true;
+    
+    // Send reservation request to server
+    fetch('/api/reserve_seat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            route_id: currentRoute,
+            passenger_name: passengerName,
+            preferred_bus_id: null, // Let system auto-assign
+            session_id: sessionId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('✅ Reservation successful:', data);
+        } else {
+            console.log('❌ Reservation failed:', data.message);
+        }
+    })
+    .catch(error => {
+        console.error('❌ Reservation error:', error);
+        alert('Failed to reserve seat. Please try again.');
+    })
+    .finally(() => {
+        // Reset button state
+        reserveBtn.textContent = originalText;
+        reserveBtn.disabled = false;
+    });
+});
+
+// Confirm Bus ID button
+document.getElementById('confirmBusId').addEventListener('click', () => {
+    const busId = document.getElementById('busIdField').value.trim();
+    
+    if (!busId) {
+        alert('Please enter a valid bus ID');
+        return;
+    }
+    
+    // Validate bus ID format (optional, can be customized)
+    if (!busId.match(/^[A-Z0-9]{3,10}$/i)) {
+        alert('Bus ID should be 3-10 alphanumeric characters (e.g., BUS001)');
+        return;
+    }
+    
+    myBusId = busId;
+    document.getElementById('busId').textContent = myBusId;
+    document.getElementById('busIdInput').classList.add('hidden');
+    
+    // Now join the route with the provided bus ID
+    socket.emit('join_route', { route_id: currentRoute, mode: 'bus', bus_id: myBusId });
+    
+    console.log(`✓ Bus ID confirmed: ${myBusId}`);
+});
+
+// Handle Enter key in bus ID field
+document.getElementById('busIdField').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        document.getElementById('confirmBusId').click();
+    }
 });
