@@ -113,13 +113,6 @@
             font-weight: 500;
         }
 
-        .subtitle {
-            text-align: center;
-            color: var(--md-on-surface-variant);
-            margin-bottom: 24px;
-            font-size: 1em;
-        }
-
         .mode-buttons {
             display: flex;
             gap: 16px;
@@ -210,7 +203,7 @@
             cursor: pointer;
             box-shadow: var(--md-elevation-1);
             appearance: none;
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6,9 12,15 18,9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
             background-repeat: no-repeat;
             background-position: right 12px center;
             background-size: 20px;
@@ -912,6 +905,27 @@
             height: 2px;
             background: linear-gradient(to right, transparent, var(--md-outline), transparent);
         }
+
+        /* Reservation Status Styles */
+        #reservationStatus.success {
+            background: rgba(76, 175, 80, 0.2);
+            color: #2E7D32;
+            border: 1px solid #4CAF50;
+        }
+
+        #reservationStatus.error {
+            background: rgba(244, 67, 54, 0.2);
+            color: #D32F2F;
+            border: 1px solid #F44336;
+        }
+
+        #reservationStatus {
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            min-height: 20px;
+        }
     </style>
 </head>
 <body>
@@ -954,6 +968,16 @@
                 <p>🛣️ Route: <span id="busRoute"></span></p>
             </div>
 
+            <!-- Bus ID Input -->
+            <div id="busIdInput" class="hidden" style="margin: 16px 0; padding: 16px; background: var(--md-surface-variant); border-radius: 12px;">
+                <label class="select-label">Enter Your Bus Number for Route <span id="busIdRouteDisplay"></span>:</label>
+                <div style="display: flex; gap: 12px; align-items: center;">
+                    <input type="text" id="busIdField" placeholder="e.g., BUS001" style="flex: 1; padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px; font-size: 14px;">
+                    <button id="confirmBusId" class="btn btn-primary">Confirm Bus ID</button>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">ℹ️ Enter your bus number as displayed on the vehicle.</p>
+            </div>
+
             <div id="currentStopDisplay" class="hidden">
                 <div class="current-stop-badge">
                     <span class="material-symbols-outlined">location_on</span>
@@ -975,14 +999,13 @@
                     ℹ️ When marked as FULL, your bus will be hidden from passenger view
                 </p>
             </div>
-
             <!-- Driver Waiting Passengers Section -->
-            <div class="info-panel">
-                <h3>👥 Waiting Passengers</h3>
-                <div id="driverWaitingList" class="waiting-list">
-                    <!-- Waiting passengers will be listed here -->
-                </div>
-            </div>
+             <div class="info-panel">
+                  <h3>👥 Waiting Passengers</h3>
+              <div id="driverWaitingList" class="waiting-list">
+        <!-- Waiting passengers will be listed here -->
+              </div>
+              </div>
 
             <!-- Progress Bar for Distance Covered (Driver Mode) -->
             <div id="progressContainer" class="progress-container hidden">
@@ -1010,67 +1033,128 @@
                 </div>
             </div>
 
-            <div class="traffic-control">
-                <label for="trafficLevel">Traffic Level: <span id="trafficValue">1.5</span></label>
-                <input type="range" id="trafficLevel" min="1.0" max="3.0" step="0.1" value="1.5">
+            <hr class="section-divider">
+
+            <div class="info-panel">
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="busStatus">Not Sharing</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Active Buses on Route:</span>
+                    <span class="info-value" id="busCount">0</span>
+                </div>
             </div>
 
-            <div id="driverStats" class="stats-grid hidden">
-                <div class="stat-card" id="speedCard">
-                    <div class="stat-label">Speed</div>
-                    <div class="stat-value" id="busSpeed">-- km/h</div>
+            <div id="driverStats" class="hidden">
+                <h3 style="margin: 16px 0 12px 0;">📊 Real-time Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card" id="speedCard">
+                        <div class="stat-label">Speed</div>
+                        <div class="stat-value"><span id="busSpeed">0</span> km/h</div>
+                    </div>
+                    <div class="stat-card" id="stopCard">
+                        <div class="stat-label">Next Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="nearestStopDriver">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="distanceCard">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value"><span id="distanceToStop">--</span></div>
+                    </div>
+                    <div class="stat-card" id="etaCard">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaToStop">--</span> min</div>
+                    </div>
+                    <div class="stat-card" id="driverSeatsCard">
+                        <div class="stat-label">Available Seats</div>
+                        <div class="stat-value"><span id="driverAvailableSeats">50</span></div>
+                    </div>
                 </div>
-                <div class="stat-card" id="stopCard">
-                    <div class="stat-label">Next Stop</div>
-                    <div class="stat-value" id="nearestStopDriver">Calculating...</div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Passengers Waiting at Stops (Driver View) -->
+            <div id="passengerWaitingSection" class="hidden">
+                <h3 style="margin-bottom: 12px;">👥 Passengers Waiting at Stops</h3>
+                <div id="driverWaitingList" class="waiting-list">
+                    <p style="text-align center; color: #999;">No passengers waiting currently</p>
                 </div>
-                <div class="stat-card" id="distanceCard">
-                    <div class="stat-label">Distance to Stop</div>
-                    <div class="stat-value" id="distanceToStop">-- km</div>
-                </div>
-                <div class="stat-card" id="etaCard">
-                    <div class="stat-label">ETA to Stop</div>
-                    <div class="stat-value" id="etaToStop">-- min</div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div class="traffic-control">
+                <label for="trafficLevel">
+                    🚦 Traffic Level: <strong><span id="trafficValue">1.0</span></strong>
+                </label>
+                <input type="range" id="trafficLevel" min="1" max="3" step="0.1" value="1">
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--md-on-surface-variant);">
+                    <span>Light</span>
+                    <span>Moderate</span>
+                    <span>Heavy</span>
                 </div>
             </div>
 
             <div class="button-container">
                 <button id="startSharing" class="btn btn-success">
-                    <span class="material-symbols-outlined">play_arrow</span>
+                    <span class="material-symbols-outlined">location_on</span>
                     Start Sharing Location
                 </button>
                 <button id="stopSharing" class="btn btn-danger hidden">
-                    <span class="material-symbols-outlined">stop</span>
+                    <span class="material-symbols-outlined">stop_circle</span>
                     Stop Sharing
-                </button>
-                <button id="recenterMap" class="btn btn-info recenter-btn hidden">
-                    <span class="material-symbols-outlined">center_focus_strong</span>
-                    <span class="recenter-text">Recenter</span>
                 </button>
             </div>
         </div>
 
         <div id="passengerUI" class="card hidden">
-            <div class="driver-info">
-                <h3>👤 Passenger Mode</h3>
-                <p>🛣️ Route: <span id="passengerRoute"></span></p>
+            <h2>🚏 Passenger View - Route <span id="passengerRoute"></span></h2>
+
+            <div class="info-panel">
+                <div class="stats-grid" style="margin: 0;">
+                    <div class="stat-card" id="passengerEtaCard">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaMinutes">--</span> min</div>
+                    </div>
+                    <div class="stat-card" id="passengerDistanceCard">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="distance">--</span></div>
+                    </div>
+                    <div class="stat-card" id="passengerStopCard">
+                        <div class="stat-label">Next Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="busLocationStop">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="passengerSpeedCard">
+                        <div class="stat-label">Bus Speed</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="busSpeedPassenger">--</span></div>
+                    </div>
+                    <div class="stat-card" id="passengerSeatsCard">
+                        <div class="stat-label">Available Seats</div>
+                        <div class="stat-value"><span id="passengerAvailableSeats">50</span></div>
+                    </div>
+                </div>
             </div>
 
             <div id="passengerCurrentStopDisplay" class="hidden">
                 <div class="current-stop-badge">
-                    <span class="material-symbols-outlined">location_on</span>
-                    Bus at: <strong id="passengerCurrentStopName">--</strong>
+                    <span class="material-symbols-outlined">check_circle</span>
+                    Bus currently at: <strong id="passengerCurrentStopName">--</strong>
                 </div>
             </div>
 
-            <!-- Progress Bar for Passenger Mode -->
+            <!-- Progress Bar for Distance Covered (Passenger Mode) -->
             <div id="passengerProgressContainer" class="progress-container hidden">
                 <h4>
                     <span class="material-symbols-outlined">route</span>
                     Bus Route Progress
                 </h4>
                 <div class="progress-bar-wrapper">
-                    <div class="progress-bar-fill" id="passengerProgressBarFill" style="width: 0%"></div>
+                    <div class="passengerProgressBarFill" id="passengerProgressBarFill" style="width: 0%"></div>
                     <div class="progress-text" id="passengerProgressText">0%</div>
                 </div>
                 <div class="progress-info">
@@ -1089,140 +1173,157 @@
                 </div>
             </div>
 
-            <div id="etaInfo" class="info-panel hidden">
-                <h3>🚏 Bus ETA Information</h3>
-                <div class="grid-2">
-                    <div class="info-item">
-                        <span class="info-label">ETA:</span>
-                        <span class="info-value" id="etaMinutes">-- min</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Distance:</span>
-                        <span class="info-value" id="distance">-- km</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Bus Speed:</span>
-                        <span class="info-value" id="busSpeedPassenger">-- km/h</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="info-label">Location:</span>
-                        <span class="info-value" id="busLocationStop">Searching...</span>
-                    </div>
-                </div>
-                <div class="eta-display grid-2 hidden">
-                    <div class="stat-card" id="passengerEtaCard">
-                        <div class="stat-label">ETA</div>
-                        <div class="stat-value" id="etaMinutes">-- min</div>
-                    </div>
-                    <div class="stat-card" id="passengerDistanceCard">
-                        <div class="stat-label">Distance</div>
-                        <div class="stat-value" id="distance">-- km</div>
-                    </div>
-                    <div class="stat-card" id="passengerSpeedCard">
-                        <div class="stat-label">Bus Speed</div>
-                        <div class="stat-value" id="busSpeedPassenger">-- km/h</div>
-                    </div>
-                    <div class="stat-card" id="passengerStopCard">
-                        <div class="stat-label">Bus Location</div>
-                        <div class="stat-value" id="busLocationStop">Searching...</div>
-                    </div>
-                </div>
-            </div>
+            <hr class="section-divider">
 
-            <div class="info-panel">
-                <h3>👥 Passengers Waiting at Stops</h3>
-                <div id="waitingList" class="waiting-list">
-                    <p style="text-align: center; color: #999;">Loading waiting stats...</p>
-                </div>
-            </div>
-
-            <div class="grid-2">
-                <div>
-                    <label class="select-label">Select Your Stop</label>
+            <div style="margin: 20px 0;">
+                <label class="select-label">Select Your Stop:</label>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
                     <select id="waitingStopSelect">
                         <option value="">-- Select your stop --</option>
                     </select>
-                </div>
-                <div>
-                    <label class="select-label">Waiting Status</label>
                     <button id="waitingToggle" class="btn btn-info">
+                        <span class="material-symbols-outlined">pan_tool</span>
                         I'm Waiting at This Stop
                     </button>
                 </div>
             </div>
 
+            <hr class="section-divider">
+
+            <div style="margin: 20px 0;">
+                <h3 style="margin-bottom: 12px;">💺 Seat Reservation</h3>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <input type="text" id="passengerNameInput" placeholder="Your name (optional)" style="width: 100%; max-width: 300px; padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px;">
+                    <button id="reserveBtn" class="btn btn-primary">
+                        <span class="material-symbols-outlined">event_seat</span>
+                        Reserve Seat
+                    </button>
+                    <div id="reservationStatus" style="font-weight: 500; padding: 8px; border-radius: 8px; text-align: center; min-height: 20px;"></div>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px; text-align: center;">ℹ️ Seats are auto-assigned to the next available bus if preferred is full.</p>
+            </div>
+
+            <hr class="section-divider">
+
+            <div>
+                <h3 style="margin-bottom: 12px;">👥 Passengers Waiting</h3>
+                <div id="waitingList" class="waiting-list"></div>
+            </div>
+
             <div class="button-container">
                 <button id="trackBus" class="btn btn-success">
-                    <span class="material-symbols-outlined">visibility</span>
+                    <span class="material-symbols-outlined">search</span>
                     Track Bus
                 </button>
                 <button id="stopTracking" class="btn btn-danger hidden">
-                    <span class="material-symbols-outlined">visibility_off</span>
+                    <span class="material-symbols-outlined">stop_circle</span>
                     Stop Tracking
                 </button>
-                <button id="recenterMap" class="btn btn-info recenter-btn hidden">
-                    <span class="material-symbols-outlined">center_focus_strong</span>
-                    <span class="recenter-text">Recenter</span>
-                </button>
+            </div>
+
+            <div id="etaInfo" class="info-panel hidden" style="margin-top: 20px;">
+                <p style="text-align: center; font-weight: 500;">Tracking active buses on your route...</p>
+                <div class="eta-display" style="display: none; margin-top: 12px;"></div>
             </div>
         </div>
 
         <div id="mapContainer" class="card hidden">
-            <h3>🗺️ Live Bus Map</h3>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; flex: 1;">
+                    🗺️ Live Map 
+                    <span class="chip chip-desktop">Interactive - Drag to explore</span>
+                </h3>
+                <button id="recenterMap" class="btn btn-info recenter-btn" style="display: none;">
+                    <span class="material-symbols-outlined">my_location</span>
+                    <span class="recenter-text">Center on Bus</span>
+                </button>
+            </div>
             <div id="map"></div>
         </div>
+    </div>
 
-        <!-- Driver Authentication Modal -->
-        <div id="driverAuthModal" class="modal">
-            <div class="modal-content">
+    <!-- Driver Authentication Modal -->
+    <div id="driverAuthModal" class="modal">
+        <div class="modal-content">
+            <div id="loginForm">
                 <div class="modal-header">
-                    <h2>Driver Authentication</h2>
-                    <p>Please enter your credentials to start driving</p>
+                    <h2>🔐 Driver Login</h2>
+                    <p>Enter your credentials to continue</p>
                 </div>
-                <div id="loginForm">
-                    <div class="form-group">
-                        <label for="loginDriverId">Driver ID</label>
-                        <input type="text" id="loginDriverId" placeholder="Enter Driver ID">
-                    </div>
-                    <div class="form-group">
-                        <label for="loginPassword">Password</label>
-                        <input type="password" id="loginPassword" placeholder="Enter Password">
-                    </div>
-                    <div class="form-actions">
-                        <button id="loginBtn" class="btn btn-primary">Login</button>
-                        <button id="showRegister" class="btn btn-info">Register New Driver</button>
-                    </div>
+
+                <div class="form-group">
+                    <label for="loginDriverId">Driver ID</label>
+                    <input type="text" id="loginDriverId" placeholder="e.g., DRIVER001" autocomplete="username">
                 </div>
-                <div id="registerForm" class="hidden">
-                    <div class="form-group">
-                        <label for="regDriverId">Driver ID</label>
-                        <input type="text" id="regDriverId" placeholder="Choose Driver ID">
-                    </div>
-                    <div class="form-group">
-                        <label for="regName">Full Name</label>
-                        <input type="text" id="regName" placeholder="Enter Full Name">
-                    </div>
-                    <div class="form-group">
-                        <label for="regPhone">Phone Number</label>
-                        <input type="tel" id="regPhone" placeholder="Enter Phone Number">
-                    </div>
-                    <div class="form-group">
-                        <label for="regLicense">License Number</label>
-                        <input type="text" id="regLicense" placeholder="Enter License Number">
-                    </div>
-                    <div class="form-group">
-                        <label for="regPassword">Password</label>
-                        <input type="password" id="regPassword" placeholder="Choose Password">
-                    </div>
-                    <div class="form-actions">
-                        <button id="registerBtn" class="btn btn-primary">Register</button>
-                        <button id="showLogin" class="btn btn-info">Back to Login</button>
-                    </div>
+
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+
+                <div class="form-actions">
+                    <button id="loginBtn" class="btn btn-primary" style="width: 100%;">
+                        <span class="material-symbols-outlined">login</span>
+                        Login
+                    </button>
+                </div>
+
+                <div class="form-toggle">
+                    Don't have an account? <a href="#" id="showRegister">Register here</a>
+                </div>
+
+                <div class="info-box">
+                    <strong>📌 Default Login Credentials:</strong>
+                    Driver ID: <code>DRIVER001</code><br>
+                    Password: <code>admin123</code>
+                </div>
+            </div>
+
+            <div id="registerForm" class="hidden">
+                <div class="modal-header">
+                    <h2>📝 Driver Registration</h2>
+                    <p>Create a new driver account</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="regDriverId">Driver ID</label>
+                    <input type="text" id="regDriverId" placeholder="Choose a unique ID" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="Choose a secure password" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="regName">Full Name</label>
+                    <input type="text" id="regName" placeholder="Your full name" autocomplete="name">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPhone">Phone Number</label>
+                    <input type="tel" id="regPhone" placeholder="10-digit phone number" autocomplete="tel">
+                </div>
+
+                <div class="form-group">
+                    <label for="regLicense">License Number</label>
+                    <input type="text" id="regLicense" placeholder="Driving license number" autocomplete="off">
+                </div>
+
+                <div class="form-actions">
+                    <button id="registerBtn" class="btn btn-success" style="width: 100%;">
+                        <span class="material-symbols-outlined">person_add</span>
+                        Register
+                    </button>
+                </div>
+
+                <div class="form-toggle">
+                    Already have an account? <a href="#" id="showLogin">Login here</a>
                 </div>
             </div>
         </div>
     </div>
 
-    <script src="static/script.js"></script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
