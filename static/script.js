@@ -597,6 +597,8 @@ function setupBusMode() {
         initMap();
     }
     
+    loadWaitingStats();
+    
     console.log('✓ Bus mode setup complete');
 }
 
@@ -1201,7 +1203,13 @@ async function loadWaitingStats() {
 }
 
 function updateWaitingDisplay(stats) {
-    const waitingList = document.getElementById('waitingList');
+    const waitingListId = currentMode === 'bus' ? 'driverWaitingList' : 'waitingList';
+    const waitingList = document.getElementById(waitingListId);
+    
+    if (!waitingList) {
+        console.warn(`Waiting list element not found: ${waitingListId}`);
+        return;
+    }
     
     if (!stats || !stats[currentRoute]) {
         waitingList.innerHTML = '<p style="text-align: center; color: #999;">No one waiting currently</p>';
