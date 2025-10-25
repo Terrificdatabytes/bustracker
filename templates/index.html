@@ -932,7 +932,7 @@
     <div class="container">
         <div id="modeSelection" class="card">
             <h1>🚌 Bus Tracking System</h1>
-            <p class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</p>
+            <h2 class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</h2>
             
             <div id="connectionStatus" class="status-indicator">
                 <div class="status-dot"></div>
@@ -969,14 +969,15 @@
             </div>
 
             <!-- Bus ID Input -->
-            <div id="busIdInput" class="hidden" style="margin: 16px 0; padding: 16px; background: var(--md-surface-variant); border-radius: 12px;">
-                <label class="select-label">Enter Your Bus Number for Route <span id="busIdRouteDisplay"></span>:</label>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <input type="text" id="busIdField" placeholder="e.g., BUS001" style="flex: 1; padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px; font-size: 14px;">
-                    <button id="confirmBusId" class="btn btn-primary">Confirm Bus ID</button>
-                </div>
-                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">ℹ️ Enter your bus number as displayed on the vehicle.</p>
-            </div>
+       <!-- Bus ID Input -->
+<div id="busIdInput" class="hidden" style="margin: 16px 0; padding: 16px; background: var(--md-surface-variant); border-radius: 12px;">
+    <label class="select-label">Enter Your Bus Number for Route <span id="busIdRouteDisplay"></span>:</label>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="text" id="busIdField" placeholder="e.g., BUS001" style="padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px; font-size: 14px;">
+        <button id="confirmBusId" class="btn btn-primary">Confirm Bus ID</button>
+    </div>
+    <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">ℹ️ Enter your bus number as displayed on the vehicle.</p>
+</div>
 
             <div id="currentStopDisplay" class="hidden">
                 <div class="current-stop-badge">
@@ -1195,7 +1196,7 @@
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
                     <input type="text" id="passengerNameInput" placeholder="Your name (optional)" style="width: 100%; max-width: 300px; padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px;">
                     <button id="reserveBtn" class="btn btn-primary">
-                        <span class="material-symbols-outlined">event_seat</span>
+                        <span class="material-symbols-outlined"></span>
                         Reserve Seat
                     </button>
                     <div id="reservationStatus" style="font-weight: 500; padding: 8px; border-radius: 8px; text-align: center; min-height: 20px;"></div>
