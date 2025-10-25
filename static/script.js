@@ -481,6 +481,7 @@ if (capacityToggle) {
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
+    console.log('DEBUG: Login button clicked');
     const driverId = document.getElementById('loginDriverId').value.trim();
     const password = document.getElementById('loginPassword').value;
     
@@ -495,18 +496,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
         driver_id: driverId,
         password: password
     });
-});
-document.getElementById('loginBtn').addEventListener('click', async () => {
-    console.log('DEBUG: Login button clicked');  // Add this line
-    const driverId = document.getElementById('loginDriverId').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    
-    // ... rest of the code
-    socket.emit('driver_authenticate', {
-        driver_id: driverId,
-        password: password
-    });
-    console.log('DEBUG: Emit sent to server');  // Add this line
+    console.log('DEBUG: Emit sent to server');
 });
 
 document.getElementById('loginPassword').addEventListener('keypress', (e) => {
@@ -696,8 +686,6 @@ function setupBusMode() {
     
     console.log('✓ Bus mode setup complete');
 }
-
-
 
 function setupPassengerMode() {
     console.log('Setting up passenger mode...');
@@ -1271,7 +1259,6 @@ function updateClosestBusETA() {
     }
 }
 
-
 function predictETA(distanceKm, trafficLevel) {
     const baseSpeed = 30;
     const speed = baseSpeed / trafficLevel;
@@ -1355,25 +1342,6 @@ function toRad(degrees) {
     return degrees * (Math.PI / 180);
 }
 
-window.addEventListener('beforeunload', () => {
-    if (isSharing && myBusId) {
-        if (trackingInterval) {
-            navigator.geolocation.clearWatch(trackingInterval);
-        }
-        
-        socket.emit('leave_route', { 
-            route_id: currentRoute, 
-            mode: 'bus',
-            bus_id: myBusId 
-        });
-    }
-    
-    if (updateInterval) {
-        clearInterval(updateInterval);
-    }
-    
-    releaseWakeLock();
-});
 
 console.log('=== Initializing Enhanced Bus Tracking System with OSRM Waypoints ===');
 console.log('✓ Current stop detection enabled');
@@ -1408,6 +1376,35 @@ window.addEventListener('load', () => {
         driver: !!document.getElementById('progressContainer'),
         passenger: !!document.getElementById('passengerProgressContainer')
     });
+});
+window.addEventListener('beforeunload', () => {
+    if (isSharing && myBusId) {
+        if (trackingInterval) {
+            navigator.geolocation.clearWatch(trackingInterval);
+        }
+        
+        socket.emit('leave_route', { 
+            route_id: currentRoute, 
+            mode: 'bus',
+            bus_id: myBusId 
+        });
+    }
+    
+    // Cancel waiting status for passengers
+    if (isWaiting && currentWaitingStop && currentRoute) {
+        socket.emit('passenger_waiting', {
+            route_id: currentRoute,
+            stop_id: currentWaitingStop,
+            is_waiting: false
+        });
+        console.log('✓ Cancelled waiting status due to page unload');
+    }
+    
+    if (updateInterval) {
+        clearInterval(updateInterval);
+    }
+    
+    releaseWakeLock();
 });
 
 // Reserve Seat Button Logic
@@ -1449,6 +1446,7 @@ document.getElementById('reserveBtn').addEventListener('click', () => {
     .then(data => {
         if (data.success) {
             console.log('✅ Reservation successful:', data);
+            showTicket(data.bus_id, passengerName, currentRoute);
         } else {
             console.log('❌ Reservation failed:', data.message);
         }
@@ -1464,34 +1462,104 @@ document.getElementById('reserveBtn').addEventListener('click', () => {
     });
 });
 
+// Function to show printable ticket
+// Function to show printable ticket
+function showTicket(busId, passengerName, routeId) {
+    const ticketHtml = `
+        <div style="padding: 5px; background: white; border: 1px solid #4CAF50; border-radius: 5px; max-width: 250px; margin: 0 auto; font-family: monospace; font-size: 12px; text-align: center;">
+            <h2 style="color: #4CAF50; margin-bottom: 10px; font-size: 16px;">🚌 Bus Ticket</h2>
+            <hr style="border: 0; border-top: 1px dashed #4CAF50; margin: 5px 0;">
+            <p style="margin: 3px 0;"><strong>Passenger:</strong> ${passengerName}</p>
+            <p style="margin: 3px 0;"><strong>Bus Name:</strong> Bus ${busId}</p>
+            <p style="margin: 3px 0;"><strong>Route:</strong> ${routeId}</p>
+            <p style="margin: 3px 0;"><strong>Reserved At:</strong> ${new Date().toLocaleString()}</p>
+            <hr style="border: 0; border-top: 1px dashed #4CAF50; margin: 5px 0;">
+            <p style="font-size: 10px; color: #666; margin: 5px 0;">Please show this ticket to the bus driver upon boarding.</p>
+            <button onclick="window.print()" style="background: #4CAF50; color: white; border: none; padding: 5px; border-radius: 3px; cursor: pointer; width: 100%; margin-top: 5px; font-size: 12px;">Print Ticket</button>
+        </div>
+    `;
+    
+    // Show ticket on page for all devices
+    document.getElementById('reservationStatus').innerHTML = ticketHtml;
+    
+    // Hide reservation UI
+    document.getElementById('reserveBtn').style.display = 'none';
+    document.getElementById('passengerNameInput').style.display = 'none';
+    
+    // Add print styles if not already added
+    if (!document.getElementById('print-styles')) {
+        const style = document.createElement('style');
+        style.id = 'print-styles';
+        style.textContent = `
+            @media print {
+                @page {
+                    margin: 0.5cm;
+                    size: A4;
+                }
+                body {
+                    margin: 0;
+                    padding: 0;
+                }
+                body * {
+                    display: none;
+                }
+                #reservationStatus, #reservationStatus * {
+                    display: block;
+                }
+                #reservationStatus {
+                    position: static;
+                    width: 100%;
+                    height: auto;
+                    margin: 0;
+                    padding: 10px;
+                    background: white;
+                }
+                #reservationStatus > div {
+                    max-width: 250px;
+                    margin: 0 auto;
+                }
+                #reservationStatus button {
+                    display: none;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+}
 // Confirm Bus ID button
-document.getElementById('confirmBusId').addEventListener('click', () => {
-    const busId = document.getElementById('busIdField').value.trim();
-    
-    if (!busId) {
-        alert('Please enter a valid bus ID');
-        return;
-    }
-    
-    // Validate bus ID format (optional, can be customized)
-    if (!busId.match(/^[A-Z0-9]{3,10}$/i)) {
-        alert('Bus ID should be 3-10 alphanumeric characters (e.g., BUS001)');
-        return;
-    }
-    
-    myBusId = busId;
-    document.getElementById('busId').textContent = myBusId;
-    document.getElementById('busIdInput').classList.add('hidden');
-    
-    // Now join the route with the provided bus ID
-    socket.emit('join_route', { route_id: currentRoute, mode: 'bus', bus_id: myBusId });
-    
-    console.log(`✓ Bus ID confirmed: ${myBusId}`);
-});
+const confirmBusIdBtn = document.getElementById('confirmBusId');
+if (confirmBusIdBtn) {
+    confirmBusIdBtn.addEventListener('click', () => {
+        const busId = document.getElementById('busIdField')?.value.trim();
+        
+        if (!busId) {
+            alert('Please enter a valid bus ID');
+            return;
+        }
+        
+        // Validate bus ID format (optional, can be customized)
+        if (!busId.match(/^[A-Z0-9]{3,10}$/i)) {
+            alert('Bus ID should be 3-10 alphanumeric characters (e.g., BUS001)');
+            return;
+        }
+        
+        myBusId = busId;
+        document.getElementById('busId').textContent = myBusId;
+        document.getElementById('busIdInput').classList.add('hidden');
+        
+        // Now join the route with the provided bus ID
+        socket.emit('join_route', { route_id: currentRoute, mode: 'bus', bus_id: myBusId });
+        
+        console.log(`✓ Bus ID confirmed: ${myBusId}`);
+    });
+}
 
 // Handle Enter key in bus ID field
-document.getElementById('busIdField').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        document.getElementById('confirmBusId').click();
-    }
-});
+const busIdField = document.getElementById('busIdField');
+if (busIdField) {
+    busIdField.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            confirmBusIdBtn?.click();
+        }
+    });
+}
