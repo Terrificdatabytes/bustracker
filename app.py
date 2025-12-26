@@ -2175,7 +2175,9 @@ def reset_bus_route_tracking(bus_id):
 
 # ==================== END OF FILE ====================
 #-------------------------------------------------(render.com deployment)--------------------
-if __name__ == '__main__':
+# ==================== INITIALIZATION (Run on Import) ====================
+def initialize_app():
+    """Initialize the application"""
     print("=" * 80)
     print("🚌 Enhanced Bus Tracking Server - AI-Calculated Distances")
     print("=" * 80)
@@ -2183,12 +2185,12 @@ if __name__ == '__main__':
     print(f"👤 Logged in as: Terrificdatabytes")
     print("=" * 80)
     
+    # Initialize drivers file
     if not os.path.isfile(DRIVERS_FILE):
         with open(DRIVERS_FILE, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['driver_id', 'password_hash', 'name', 'phone', 'license_number', 'created_at'])
             
-            # Default admin driver
             default_password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
             writer.writerow([
                 'DRIVER001',
@@ -2199,47 +2201,38 @@ if __name__ == '__main__':
                 datetime.now().isoformat()
             ])
         print("✓ Created default driver: DRIVER001 / admin123")
-        print("⚠️ Driver registration disabled - add drivers manually to bus_drivers.csv")
     
-    # ✅ Keep waypoint generation (needed for real-time bus tracking)
+    # ✅ CRITICAL: Initialize routes with waypoints
+    print("\n🔄 Initializing routes...")
     initialize_routes_with_waypoints()
     
-    # ✅ Use manual distances instead of OSRM
+    # ✅ Verify routes were loaded
+    if not STOP_COORDS or len(STOP_COORDS) == 0:
+        print("❌ ERROR: No routes loaded! Using ORIGINAL_STOPS as fallback")
+        global STOP_COORDS
+        STOP_COORDS = {k: [s.copy() for s in v] for k, v in ORIGINAL_STOPS.items()}
+        for route_id in STOP_COORDS:
+            for stop in STOP_COORDS[route_id]:
+                stop['is_stop'] = True
+    
+    print(f"✓ Routes loaded: {list(STOP_COORDS.keys())}")
+    for route_id, points in STOP_COORDS.items():
+        stops = [p for p in points if p.get('is_stop', True)]
+        print(f"  - Route {route_id}: {len(stops)} stops, {len(points)} total points")
+    
+    # ✅ Load or calculate stop distances
     if not load_stop_distances_from_file():
-        print("\n🔄 No cached distances found, using AI-calculated segments...")
-        precalculate_stop_distances_manual()  # ✅ Use this instead of OSRM
+        print("\n🔄 No cached distances found, calculating...")
+        precalculate_stop_distances_manual()
     else:
-        print("✓ Using cached stop distances (AI-calculated)")
+        print("✓ Using cached stop distances")
     
     print("\n" + "="*80)
-    print("✓ AI-calculated segment distances (98-99% accurate)")
-    print("✓ Haversine real-time bus tracking (free, fast)")
-    print("✓ No API calls during operation")
-    print("✓ Seat Reservation System (50 seats/bus, auto-next bus)")
-    print("✓ Waiting List for Full Buses")
-    print("✓ Bus ID Input for Drivers")
-    print("=" * 80)
-    
-    init_drivers_file()
-    
-    # ✅ Get port from environment variable (for Render deployment)
-    port = int(os.environ.get('PORT', 5000))
-    print(f"🚀 Starting server on port {port}...")
+    print("✓ Server initialization complete")
     print("=" * 80 + "\n")
-    
-    try:
-        socketio.run(
-            app,
-            debug=False,
-            host='0.0.0.0',
-            port=port,  # ✅ Use dynamic port
-            use_reloader=False,
-            log_output=False
-        )
-    except KeyboardInterrupt:
-        print("\n✗ Shutting down server...")
-    except Exception as e:
-        print(f"✗ Server error: {e}")
+
+# ✅ Run initialization when module is imported (works with Gunicorn)
+initialize_app()
 
 def reset_bus_route_tracking(bus_id):
     """Reset all tracking data for a bus when it goes offline"""
@@ -2259,4 +2252,25 @@ def reset_bus_route_tracking(bus_id):
         if bus_id in bus_current_stop:
             del bus_current_stop[bus_id]
         if bus_id in bus_capacity_status:
-            del bus_capacity_status[bus_id]  # Reset capacity status
+            del bus_capacity_status[bus_id]
+
+# ==================== OPTIONAL: For Local Development ====================
+if __name__ == '__main__':
+    # This only runs when you do: python app.py
+    # Not used by Gunicorn
+    port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Running in development mode on port {port}...")
+    
+    try:
+        socketio.run(
+            app,
+            debug=True,
+            host='0.0.0.0',
+            port=port,
+            use_reloader=False,
+            log_output=True
+        )
+    except KeyboardInterrupt:
+        print("\n✗ Shutting down server...")
+    except Exception as e:
+        print(f"✗ Server error: {e}")
