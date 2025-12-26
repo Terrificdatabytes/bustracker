@@ -26,6 +26,15 @@ import json
 # Import the model class
 try:
     from model_class import LinearRegressionNumpy
+    print("✓ LinearRegressionNumpy class imported successfully")
+    MODEL_CLASS_AVAILABLE = True
+except ImportError as e:
+    print(f"⚠ Warning: Could not import model_class: {e}")
+    MODEL_CLASS_AVAILABLE = False
+    LinearRegressionNumpy = None
+# Import the model class(azure)
+'''try:
+    from model_class import LinearRegressionNumpy
 except ImportError:
     class LinearRegressionNumpy:
         def __init__(self):
@@ -50,7 +59,7 @@ except ImportError:
             y_pred = self.predict(X)
             ss_tot = np.sum((y - np.mean(y)) ** 2)
             ss_res = np.sum((y - y_pred) ** 2)
-            return 1 - (ss_res / ss_tot)
+            return 1 - (ss_res / ss_tot)'''
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-change-in-production'
 CORS(app, supports_credentials=True)
@@ -205,8 +214,8 @@ waiting_reservations = defaultdict(deque)
 distance_cache = {}
 # ✅ Stop distance cache (OSRM pre-calculated, directional)
 stop_distance_cache = {}
-# Load ML model
-try:
+# Load ML model(azure)
+'''try:
     import sys
     sys.modules['train'] = train = sys.modules[__name__]
     
@@ -218,7 +227,20 @@ except FileNotFoundError:
     print("⚠ Warning: model.pkl not found. Run train.py first.")
 except Exception as e:
     model = None
-    print(f"⚠ Warning: Could not load model: {e}")
+    print(f"⚠ Warning: Could not load model: {e}")'''
+# Load ML model
+model = None
+if MODEL_CLASS_AVAILABLE:
+    try:
+        with open('model.pkl', 'rb') as f:
+            model = pickle.load(f)
+        print("✓ ML Model loaded successfully")
+    except FileNotFoundError:
+        print("⚠ Warning: model.pkl not found. Using fallback ETA calculation.")
+    except Exception as e:
+        print(f"⚠ Warning: Could not load model: {e}. Using fallback ETA calculation.")
+else:
+    print("ℹ️ Model class not available. Using fallback ETA calculation.")
 def haversine_distance(lat1, lon1, lat2, lon2):
     """
     Calculate haversine distance between two points
