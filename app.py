@@ -2072,8 +2072,8 @@ def handle_driver_authenticate(data):
             'success': False,
             'message': 'Invalid credentials'
         })
-# ==================== MAIN SERVER STARTUP ====================
-if __name__ == '__main__':
+# ==================== MAIN SERVER STARTUP(azure production code) ====================
+'''if __name__ == '__main__':
     print("=" * 80)
     print("🚌 Enhanced Bus Tracking Server - AI-Calculated Distances")
     print("=" * 80)
@@ -2149,6 +2149,92 @@ def reset_bus_route_tracking(bus_id):
         if bus_id in bus_current_stop:
             del bus_current_stop[bus_id]
         if bus_id in bus_capacity_status:
-            del bus_capacity_status[bus_id]  # Reset capacity status when bus goes offline
+            del bus_capacity_status[bus_id] ''' # Reset capacity status when bus goes offline
 
 # ==================== END OF FILE ====================
+#-------------------------------------------------(render.com deployment)--------------------
+if __name__ == '__main__':
+    print("=" * 80)
+    print("🚌 Enhanced Bus Tracking Server - AI-Calculated Distances")
+    print("=" * 80)
+    print(f"📅 Server Start Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    print(f"👤 Logged in as: Terrificdatabytes")
+    print("=" * 80)
+    
+    if not os.path.isfile(DRIVERS_FILE):
+        with open(DRIVERS_FILE, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['driver_id', 'password_hash', 'name', 'phone', 'license_number', 'created_at'])
+            
+            # Default admin driver
+            default_password_hash = hashlib.sha256('admin123'.encode()).hexdigest()
+            writer.writerow([
+                'DRIVER001',
+                default_password_hash,
+                'Admin Driver',
+                '9876543210',
+                'TN01234567890',
+                datetime.now().isoformat()
+            ])
+        print("✓ Created default driver: DRIVER001 / admin123")
+        print("⚠️ Driver registration disabled - add drivers manually to bus_drivers.csv")
+    
+    # ✅ Keep waypoint generation (needed for real-time bus tracking)
+    initialize_routes_with_waypoints()
+    
+    # ✅ Use manual distances instead of OSRM
+    if not load_stop_distances_from_file():
+        print("\n🔄 No cached distances found, using AI-calculated segments...")
+        precalculate_stop_distances_manual()  # ✅ Use this instead of OSRM
+    else:
+        print("✓ Using cached stop distances (AI-calculated)")
+    
+    print("\n" + "="*80)
+    print("✓ AI-calculated segment distances (98-99% accurate)")
+    print("✓ Haversine real-time bus tracking (free, fast)")
+    print("✓ No API calls during operation")
+    print("✓ Seat Reservation System (50 seats/bus, auto-next bus)")
+    print("✓ Waiting List for Full Buses")
+    print("✓ Bus ID Input for Drivers")
+    print("=" * 80)
+    
+    init_drivers_file()
+    
+    # ✅ Get port from environment variable (for Render deployment)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"🚀 Starting server on port {port}...")
+    print("=" * 80 + "\n")
+    
+    try:
+        socketio.run(
+            app,
+            debug=False,
+            host='0.0.0.0',
+            port=port,  # ✅ Use dynamic port
+            use_reloader=False,
+            log_output=False
+        )
+    except KeyboardInterrupt:
+        print("\n✗ Shutting down server...")
+    except Exception as e:
+        print(f"✗ Server error: {e}")
+
+def reset_bus_route_tracking(bus_id):
+    """Reset all tracking data for a bus when it goes offline"""
+    with bus_data_lock:
+        if bus_id in bus_speed_history:
+            del bus_speed_history[bus_id]
+        if bus_id in bus_start_location:
+            del bus_start_location[bus_id]
+        if bus_id in bus_arrival_times:
+            del bus_arrival_times[bus_id]
+        if bus_id in bus_last_passed_stop:
+            del bus_last_passed_stop[bus_id]
+        if bus_id in bus_direction:
+            del bus_direction[bus_id]
+        if bus_id in bus_position_history:
+            del bus_position_history[bus_id]
+        if bus_id in bus_current_stop:
+            del bus_current_stop[bus_id]
+        if bus_id in bus_capacity_status:
+            del bus_capacity_status[bus_id]  # Reset capacity status
