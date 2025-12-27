@@ -2178,6 +2178,7 @@ def reset_bus_route_tracking(bus_id):
 # ==================== INITIALIZATION (Run on Import) ====================
 def initialize_app():
     """Initialize the application"""
+    global STOP_COORDS
     print("=" * 80)
     print("🚌 Enhanced Bus Tracking Server - AI-Calculated Distances")
     print("=" * 80)
@@ -2209,7 +2210,7 @@ def initialize_app():
     # ✅ Verify routes were loaded
     if not STOP_COORDS or len(STOP_COORDS) == 0:
         print("❌ ERROR: No routes loaded! Using ORIGINAL_STOPS as fallback")
-        global STOP_COORDS
+        
         STOP_COORDS = {k: [s.copy() for s in v] for k, v in ORIGINAL_STOPS.items()}
         for route_id in STOP_COORDS:
             for stop in STOP_COORDS[route_id]:
