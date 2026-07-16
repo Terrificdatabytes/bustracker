@@ -1,6 +1,6 @@
 // Complete script.js with OSRM Waypoint-Based Distance Calculation
 // Date: 2025-10-19 16:38:01 UTC
-// Author: Terrificdatabytes
+// Author: Terrificdatabytes 
 // Global state
 let socket;
 let map;
