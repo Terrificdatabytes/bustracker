@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Tracking System</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🚌</text></svg>">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --md-primary: #6750A4;
+            --md-on-primary: #FFFFFF;
+            --md-primary-container: #EADDFF;
+            --md-on-primary-container: #21005D;
+            --md-secondary: #625B71;
+            --md-on-secondary: #FFFFFF;
+            --md-secondary-container: #E8DEF8;
+            --md-on-secondary-container: #1D192B;
+            --md-tertiary: #7D5260;
+            --md-on-tertiary: #FFFFFF;
+            --md-error: #BA1A1A;
+            --md-on-error: #FFFFFF;
+            --md-surface: #FFFBFE;
+            --md-on-surface: #1C1B1F;
+            --md-surface-variant: #E7E0EC;
+            --md-on-surface-variant: #49454F;
+            --md-outline: #79747E;
+            --md-shadow: rgba(0, 0, 0, 0.3);
+            --md-elevation-1: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+            --md-elevation-2: 0 1px 2px 0 rgba(0, 0, 0, 0.3), 0 2px 6px 2px rgba(0, 0, 0, 0.15);
+            --md-elevation-3: 0 4px 8px 3px rgba(0, 0, 0, 0.15), 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            background-attachment: fixed;
+            color: var(--md-on-surface);
+            min-height: 100vh;
+            padding: 16px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(ellipse at 20% 30%, rgba(103, 80, 164, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 70%, rgba(125, 82, 96, 0.15) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .card:hover {
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+            transform: translateY(-2px);
+        }
+
+        h1 {
+            text-align: center;
+            color: var(--md-primary);
+            margin-bottom: 8px;
+            font-size: 2.5em;
+            font-weight: 500;
+            letter-spacing: -0.5px;
+        }
+
+        h2 {
+            color: var(--md-primary);
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            font-weight: 500;
+            text-align: center;
+        }
+
+        h3 {
+            color: var(--md-on-surface);
+            margin-bottom: 12px;
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+
+        .mode-buttons {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .route-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            font-size: 15px;
+            font-weight: 500;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: var(--md-elevation-1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-family: 'Roboto', sans-serif;
+            min-width: 180px;
+        }
+
+        .btn:hover {
+            box-shadow: var(--md-elevation-3);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: var(--md-elevation-1);
+        }
+
+        .btn-primary {
+            background: var(--md-primary);
+            color: var(--md-on-primary);
+        }
+
+        .btn-success {
+            background: #2E7D32;
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--md-error);
+            color: var(--md-on-error);
+        }
+
+        .btn-info {
+            background: #0277BD;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #F57C00;
+            color: white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Enhanced Select Dropdown Styling */
+        select {
+            padding: 16px 20px;
+            font-size: 16px;
+            border: 2px solid var(--md-outline);
+            border-radius: 12px;
+            min-width: 320px;
+            width: 100%;
+            max-width: 400px;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            font-family: 'Roboto', sans-serif;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            box-shadow: var(--md-elevation-1);
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px;
+            padding-right: 45px;
+        }
+
+        select:hover {
+            border-color: var(--md-primary);
+            box-shadow: var(--md-elevation-2);
+        }
+
+        select:focus {
+            outline: none;
+            border-color: var(--md-primary);
+            border-width: 2px;
+            box-shadow: 0 0 0 3px rgba(103, 80, 164, 0.2);
+        }
+
+        select option {
+            padding: 12px;
+            font-size: 15px;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+        }
+
+        /* Select Label Styling */
+        .select-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+            margin-bottom: 8px;
+            display: block;
+            text-align: center;
+        }
+
+        #map {
+            height: 500px;
+            border-radius: 12px;
+            box-shadow: var(--md-elevation-1);
+        }
+
+        .info-panel {
+            background: var(--md-surface-variant);
+            padding: 16px;
+            border-radius: 12px;
+            margin: 16px 0;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--md-outline);
+        }
+
+        .info-item:last-child {
+            border-bottom: none;
+        }
+
+        .info-label {
+            font-weight: 500;
+            color: var(--md-on-surface-variant);
+        }
+
+        .info-value {
+            color: var(--md-on-surface);
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .value-updating {
+            animation: numberChange 0.4s ease;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 16px 0;
+            padding: 12px;
+            background: var(--md-surface-variant);
+            border-radius: 24px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #FFC107;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: #2E7D32;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .waiting-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .waiting-list-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            margin: 8px 0;
+            background: var(--md-surface);
+            border-radius: 8px;
+            box-shadow: var(--md-elevation-1);
+            border-left: 4px solid var(--md-primary);
+        }
+
+        .waiting-count {
+            background: var(--md-primary);
+            color: var(--md-on-primary);
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-weight: 500;
+            font-size: 12px;
+        }
+
+        .traffic-control {
+            margin: 16px 0;
+        }
+
+        .traffic-control label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--md-surface-variant);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--md-primary);
+            cursor: pointer;
+            box-shadow: var(--md-elevation-2);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: var(--md-elevation-3);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--md-primary);
+            cursor: pointer;
+            border: none;
+            box-shadow: var(--md-elevation-2);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: var(--md-elevation-3);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        /* Button Container Styling */
+        .button-container {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .button-container-left {
+            justify-content: flex-start;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--md-surface);
+            padding: 32px;
+            border-radius: 28px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: var(--md-elevation-3);
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .modal-header h2 {
+            color: var(--md-on-surface);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .modal-header p {
+            color: var(--md-on-surface-variant);
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid var(--md-outline);
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Roboto', sans-serif;
+            background: var(--md-surface);
+            color: var(--md-on-surface);
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--md-primary);
+            border-width: 2px;
+        }
+
+        .form-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .form-toggle {
+            text-align: center;
+            margin-top: 16px;
+            color: var(--md-on-surface-variant);
+            font-size: 14px;
+        }
+
+        .form-toggle a {
+            color: var(--md-primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .form-toggle a:hover {
+            text-decoration: underline;
+        }
+
+        .driver-info {
+            background: linear-gradient(135deg, var(--md-primary) 0%, var(--md-tertiary) 100%);
+            color: var(--md-on-primary);
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 16px;
+            box-shadow: var(--md-elevation-2);
+        }
+
+        .driver-info h3 {
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: white;
+        }
+
+        .driver-info p {
+            margin: 4px 0;
+            opacity: 0.95;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin: 16px 0;
+        }
+
+        .stat-card {
+            background: var(--md-primary-container);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--md-on-primary-container);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--md-on-primary-container);
+            transition: all 0.3s ease;
+        }
+
+        /* Current Stop Badge */
+        .current-stop-badge {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin: 12px 0;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+            animation: pulseGlow 2s infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3); }
+            50% { box-shadow: 0 4px 16px rgba(76, 175, 80, 0.6); }
+        }
+
+        /* Capacity Toggle Switch */
+        .capacity-toggle {
+            background: var(--md-surface-variant);
+            padding: 20px;
+            border-radius: 12px;
+            margin: 16px 0;
+        }
+
+        .capacity-toggle h4 {
+            margin-bottom: 12px;
+            color: var(--md-on-surface);
+            font-size: 16px;
+        }
+
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toggle-switch:hover {
+            box-shadow: var(--md-elevation-1);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #f44336;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .capacity-status {
+            flex: 1;
+            font-weight: 500;
+        }
+
+        .capacity-status.full {
+            color: #f44336;
+        }
+
+        .capacity-status.available {
+            color: #4CAF50;
+        }
+
+        /* Progress Bar Styles */
+        .progress-container {
+            margin: 20px 0;
+            padding: 20px;
+            background: var(--md-surface-variant);
+            border-radius: 12px;
+        }
+
+        .progress-container h4 {
+            margin-bottom: 16px;
+            color: var(--md-on-surface);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .progress-bar-wrapper {
+            position: relative;
+            height: 40px;
+            background: #e0e0e0;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50 0%, #66BB6A 50%, #81C784 100%);
+            border-radius: 20px;
+            transition: width 0.5s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 12px;
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.4);
+        }
+
+        .progress-bar-fill::after {
+            content: '🚌';
+            position: absolute;
+            right: -5px;
+            font-size: 24px;
+            animation: bounce 1s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .progress-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: 600;
+            color: var(--md-on-surface);
+            font-size: 14px;
+            z-index: 1;
+            text-shadow: 0 1px 2px rgba(255,255,255,0.8);
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--md-on-surface-variant);
+        }
+
+        .progress-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* TradingView-style animations */
+        @keyframes flashGreen {
+            0% { background-color: rgba(46, 125, 50, 0.3); transform: scale(1); }
+            50% { background-color: rgba(46, 125, 50, 0.6); transform: scale(1.05); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
+        @keyframes flashRed {
+            0% { background-color: rgba(244, 67, 54, 0.3); transform: scale(1); }
+            50% { background-color: rgba(244, 67, 54, 0.6); transform: scale(1.05); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
+        @keyframes flashBlue {
+            0% { background-color: rgba(33, 150, 243, 0.3); transform: scale(1); }
+            50% { background-color: rgba(33, 150, 243, 0.6); transform: scale(1.05); }
+            100% { background-color: transparent; transform: scale(1); }
+        }
+
+        @keyframes numberChange {
+            0% { transform: translateY(0); opacity: 1; }
+            50% { transform: translateY(-5px); opacity: 0.7; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+
+        @keyframes ripple {
+            0% { box-shadow: 0 0 0 0 rgba(103, 80, 164, 0.7); }
+            100% { box-shadow: 0 0 0 20px rgba(103, 80, 164, 0); }
+        }
+
+        .flash-up {
+            animation: flashGreen 0.6s ease;
+        }
+
+        .flash-down {
+            animation: flashRed 0.6s ease;
+        }
+
+        .flash-update {
+            animation: flashBlue 0.6s ease;
+        }
+
+        .number-change {
+            animation: numberChange 0.4s ease;
+        }
+
+        .stat-card.updating {
+            animation: ripple 0.6s ease;
+        }
+
+        .chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 6px 12px;
+            background: var(--md-secondary-container);
+            color: var(--md-on-secondary-container);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            margin: 4px;
+        }
+
+        .recenter-btn {
+            padding: 10px 20px;
+            font-size: 13px;
+            white-space: nowrap;
+            min-width: auto;
+        }
+
+        .recenter-btn .material-symbols-outlined {
+            font-size: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+            
+            h1 {
+                font-size: 2em;
+            }
+            
+            #map {
+                height: 350px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .chip-desktop {
+                display: none;
+            }
+
+            .btn {
+                min-width: 100%;
+                padding: 14px 20px;
+            }
+
+            .button-container {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            select {
+                min-width: 100%;
+                max-width: 100%;
+            }
+
+            .recenter-btn {
+                padding: 12px 16px;
+                font-size: 13px;
+                width: 100%;
+                justify-content: center;
+            }
+
+            .recenter-text {
+                display: inline;
+            }
+
+            .recenter-btn .material-symbols-outlined {
+                font-size: 20px;
+            }
+
+            #mapContainer > div:first-child {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            #mapContainer h3 {
+                text-align: center;
+            }
+
+            .progress-info {
+                flex-direction: column;
+                gap: 8px;
+            }
+        }
+
+        .leaflet-popup-content-wrapper {
+            border-radius: 12px;
+            box-shadow: var(--md-elevation-2);
+        }
+
+        .custom-popup {
+            text-align: center;
+            padding: 8px;
+        }
+
+        .custom-popup h4 {
+            margin-bottom: 4px;
+            color: var(--md-on-surface);
+        }
+
+        .info-box {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--md-secondary-container);
+            border-radius: 12px;
+            font-size: 13px;
+            color: var(--md-on-secondary-container);
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        /* Section Dividers */
+        .section-divider {
+            margin: 24px 0;
+            border: 0;
+            height: 2px;
+            background: linear-gradient(to right, transparent, var(--md-outline), transparent);
+        }
+
+        /* Reservation Status Styles */
+        #reservationStatus.success {
+            background: rgba(76, 175, 80, 0.2);
+            color: #2E7D32;
+            border: 1px solid #4CAF50;
+        }
+
+        #reservationStatus.error {
+            background: rgba(244, 67, 54, 0.2);
+            color: #D32F2F;
+            border: 1px solid #F44336;
+        }
+
+        #reservationStatus {
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            min-height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="modeSelection" class="card">
+            <h1>🚌 Bus Tracking System</h1>
+            <h2 class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</h2>
+            
+            <div id="connectionStatus" class="status-indicator">
+                <div class="status-dot"></div>
+                <span id="statusText">Connecting...</span>
+            </div>
+
+            <div class="mode-buttons">
+                <button id="busMode" class="btn btn-primary">
+                    <span class="material-symbols-outlined">directions_bus</span>
+                    Bus Driver Mode
+                </button>
+                <button id="passengerMode" class="btn btn-primary">
+                    <span class="material-symbols-outlined">person</span>
+                    Passenger Mode
+                </button>
+            </div>
+        </div>
+
+        <div id="routeSelection" class="card hidden">
+            <h2>Select Route</h2>
+            <div class="route-section">
+                <label class="select-label">Choose your bus route</label>
+                <select id="routeSelect">
+                    <option value="">-- Select Route --</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="busUI" class="card hidden">
+            <div class="driver-info">
+                <h3>👤 Driver: <span id="driverName">Not Set</span></h3>
+                <p>🚌 Bus ID: <span id="busId">Waiting...</span></p>
+                <p>🛣️ Route: <span id="busRoute"></span></p>
+            </div>
+
+            <!-- Bus ID Input -->
+       <!-- Bus ID Input -->
+<div id="busIdInput" class="hidden" style="margin: 16px 0; padding: 16px; background: var(--md-surface-variant); border-radius: 12px;">
+    <label class="select-label">Enter Your Bus Number for Route <span id="busIdRouteDisplay"></span>:</label>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <input type="text" id="busIdField" placeholder="e.g., BUS001" style="padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px; font-size: 14px;">
+        <button id="confirmBusId" class="btn btn-primary">Confirm Bus ID</button>
+    </div>
+    <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">ℹ️ Enter your bus number as displayed on the vehicle.</p>
+</div>
+
+            <div id="currentStopDisplay" class="hidden">
+                <div class="current-stop-badge">
+                    <span class="material-symbols-outlined">location_on</span>
+                    Currently at: <strong id="currentStopName">--</strong>
+                </div>
+            </div>
+
+            <!-- Bus Capacity Toggle -->
+            <div class="capacity-toggle">
+                <h4>🚏 Bus Capacity Status</h4>
+                <label class="toggle-switch">
+                    <div class="switch">
+                        <input type="checkbox" id="capacityToggle">
+                        <span class="slider"></span>
+                    </div>
+                    <span class="capacity-status available" id="capacityStatusText">Bus Available</span>
+                </label>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px;">
+                    ℹ️ When marked as FULL, your bus will be hidden from passenger view
+                </p>
+            </div>
+            <!-- Driver Waiting Passengers Section -->
+             <div class="info-panel">
+                  <h3>👥 Waiting Passengers</h3>
+              <div id="driverWaitingList" class="waiting-list">
+        <!-- Waiting passengers will be listed here -->
+              </div>
+              </div>
+
+            <!-- Progress Bar for Distance Covered (Driver Mode) -->
+            <div id="progressContainer" class="progress-container hidden">
+                <h4>
+                    <span class="material-symbols-outlined">route</span>
+                    Route Progress
+                </h4>
+                <div class="progress-bar-wrapper">
+                    <div class="progress-bar-fill" id="progressBarFill" style="width: 0%"></div>
+                    <div class="progress-text" id="progressText">0%</div>
+                </div>
+                <div class="progress-info">
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">location_on</span>
+                        <span id="progressStart">Start</span>
+                    </div>
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">straighten</span>
+                        <strong><span id="progressDistance">0.0 km</span></strong> covered
+                    </div>
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">flag</span>
+                        <span id="progressEnd">End</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div class="info-panel">
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="busStatus">Not Sharing</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Active Buses on Route:</span>
+                    <span class="info-value" id="busCount">0</span>
+                </div>
+            </div>
+
+            <div id="driverStats" class="hidden">
+                <h3 style="margin: 16px 0 12px 0;">📊 Real-time Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-card" id="speedCard">
+                        <div class="stat-label">Speed</div>
+                        <div class="stat-value"><span id="busSpeed">0</span> km/h</div>
+                    </div>
+                    <div class="stat-card" id="stopCard">
+                        <div class="stat-label">Next Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="nearestStopDriver">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="distanceCard">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value"><span id="distanceToStop">--</span></div>
+                    </div>
+                    <div class="stat-card" id="etaCard">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaToStop">--</span> min</div>
+                    </div>
+                    <div class="stat-card" id="driverSeatsCard">
+                        <div class="stat-label">Available Seats</div>
+                        <div class="stat-value"><span id="driverAvailableSeats">50</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <!-- Passengers Waiting at Stops (Driver View) -->
+            <div id="passengerWaitingSection" class="hidden">
+                <h3 style="margin-bottom: 12px;">👥 Passengers Waiting at Stops</h3>
+                <div id="driverWaitingList" class="waiting-list">
+                    <p style="text-align center; color: #999;">No passengers waiting currently</p>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div class="traffic-control">
+                <label for="trafficLevel">
+                    🚦 Traffic Level: <strong><span id="trafficValue">1.0</span></strong>
+                </label>
+                <input type="range" id="trafficLevel" min="1" max="3" step="0.1" value="1">
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; color: var(--md-on-surface-variant);">
+                    <span>Light</span>
+                    <span>Moderate</span>
+                    <span>Heavy</span>
+                </div>
+            </div>
+
+            <div class="button-container">
+                <button id="startSharing" class="btn btn-success">
+                    <span class="material-symbols-outlined">location_on</span>
+                    Start Sharing Location
+                </button>
+                <button id="stopSharing" class="btn btn-danger hidden">
+                    <span class="material-symbols-outlined">stop_circle</span>
+                    Stop Sharing
+                </button>
+            </div>
+        </div>
+
+        <div id="passengerUI" class="card hidden">
+            <h2>🚏 Passenger View - Route <span id="passengerRoute"></span></h2>
+
+            <div class="info-panel">
+                <div class="stats-grid" style="margin: 0;">
+                    <div class="stat-card" id="passengerEtaCard">
+                        <div class="stat-label">ETA</div>
+                        <div class="stat-value"><span id="etaMinutes">--</span> min</div>
+                    </div>
+                    <div class="stat-card" id="passengerDistanceCard">
+                        <div class="stat-label">Distance</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="distance">--</span></div>
+                    </div>
+                    <div class="stat-card" id="passengerStopCard">
+                        <div class="stat-label">Next Stop</div>
+                        <div class="stat-value" style="font-size: 14px; overflow: hidden; text-overflow: ellipsis;">
+                            <span id="busLocationStop">--</span>
+                        </div>
+                    </div>
+                    <div class="stat-card" id="passengerSpeedCard">
+                        <div class="stat-label">Bus Speed</div>
+                        <div class="stat-value" style="font-size: 18px;"><span id="busSpeedPassenger">--</span></div>
+                    </div>
+                    <div class="stat-card" id="passengerSeatsCard">
+                        <div class="stat-label">Available Seats</div>
+                        <div class="stat-value"><span id="passengerAvailableSeats">50</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="passengerCurrentStopDisplay" class="hidden">
+                <div class="current-stop-badge">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    Bus currently at: <strong id="passengerCurrentStopName">--</strong>
+                </div>
+            </div>
+
+            <!-- Progress Bar for Distance Covered (Passenger Mode) -->
+            <div id="passengerProgressContainer" class="progress-container hidden">
+                <h4>
+                    <span class="material-symbols-outlined">route</span>
+                    Bus Route Progress
+                </h4>
+                <div class="progress-bar-wrapper">
+                    <div class="passengerProgressBarFill" id="passengerProgressBarFill" style="width: 0%"></div>
+                    <div class="progress-text" id="passengerProgressText">0%</div>
+                </div>
+                <div class="progress-info">
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">location_on</span>
+                        <span id="passengerProgressStart">Start</span>
+                    </div>
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">straighten</span>
+                        <strong><span id="passengerProgressDistance">0.0 km</span></strong> covered
+                    </div>
+                    <div class="progress-label">
+                        <span class="material-symbols-outlined">flag</span>
+                        <span id="passengerProgressEnd">End</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div style="margin: 20px 0;">
+                <label class="select-label">Select Your Stop:</label>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+                    <select id="waitingStopSelect">
+                        <option value="">-- Select your stop --</option>
+                    </select>
+                    <button id="waitingToggle" class="btn btn-info">
+                        <span class="material-symbols-outlined">pan_tool</span>
+                        I'm Waiting at This Stop
+                    </button>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <div style="margin: 20px 0;">
+                <h3 style="margin-bottom: 12px;">💺 Seat Reservation</h3>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+                    <input type="text" id="passengerNameInput" placeholder="Your name (optional)" style="width: 100%; max-width: 300px; padding: 12px; border: 1px solid var(--md-outline); border-radius: 8px;">
+                    <button id="reserveBtn" class="btn btn-primary">
+                        <span class="material-symbols-outlined"></span>
+                        Reserve Seat
+                    </button>
+                    <div id="reservationStatus" style="font-weight: 500; padding: 8px; border-radius: 8px; text-align: center; min-height: 20px;"></div>
+                </div>
+                <p style="font-size: 12px; color: var(--md-on-surface-variant); margin-top: 8px; text-align: center;">ℹ️ Seats are auto-assigned to the next available bus if preferred is full.</p>
+            </div>
+
+            <hr class="section-divider">
+
+            <div>
+                <h3 style="margin-bottom: 12px;">👥 Passengers Waiting</h3>
+                <div id="waitingList" class="waiting-list"></div>
+            </div>
+
+            <div class="button-container">
+                <button id="trackBus" class="btn btn-success">
+                    <span class="material-symbols-outlined">search</span>
+                    Track Bus
+                </button>
+                <button id="stopTracking" class="btn btn-danger hidden">
+                    <span class="material-symbols-outlined">stop_circle</span>
+                    Stop Tracking
+                </button>
+            </div>
+
+            <div id="etaInfo" class="info-panel hidden" style="margin-top: 20px;">
+                <p style="text-align: center; font-weight: 500;">Tracking active buses on your route...</p>
+                <div class="eta-display" style="display: none; margin-top: 12px;"></div>
+            </div>
+        </div>
+
+        <div id="mapContainer" class="card hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; flex: 1;">
+                    🗺️ Live Map 
+                    <span class="chip chip-desktop">Interactive - Drag to explore</span>
+                </h3>
+                <button id="recenterMap" class="btn btn-info recenter-btn" style="display: none;">
+                    <span class="material-symbols-outlined">my_location</span>
+                    <span class="recenter-text">Center on Bus</span>
+                </button>
+            </div>
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Driver Authentication Modal -->
+    <div id="driverAuthModal" class="modal">
+        <div class="modal-content">
+            <div id="loginForm">
+                <div class="modal-header">
+                    <h2>🔐 Driver Login</h2>
+                    <p>Enter your credentials to continue</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="loginDriverId">Driver ID</label>
+                    <input type="text" id="loginDriverId" placeholder="e.g., DRIVER001" autocomplete="username">
+                </div>
+
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" placeholder="Enter your password" autocomplete="current-password">
+                </div>
+
+                <div class="form-actions">
+                    <button id="loginBtn" class="btn btn-primary" style="width: 100%;">
+                        <span class="material-symbols-outlined">login</span>
+                        Login
+                    </button>
+                </div>
+
+                <div class="form-toggle">
+                    Don't have an account? <a href="#" id="showRegister">Register here</a>
+                </div>
+
+                <div class="info-box">
+                    <strong>📌 Default Login Credentials:</strong>
+                    Driver ID: <code>DRIVER001</code><br>
+                    Password: <code>admin123</code>
+                </div>
+            </div>
+
+            <div id="registerForm" class="hidden">
+                <div class="modal-header">
+                    <h2>📝 Driver Registration</h2>
+                    <p>Create a new driver account</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="regDriverId">Driver ID</label>
+                    <input type="text" id="regDriverId" placeholder="Choose a unique ID" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPassword">Password</label>
+                    <input type="password" id="regPassword" placeholder="Choose a secure password" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="regName">Full Name</label>
+                    <input type="text" id="regName" placeholder="Your full name" autocomplete="name">
+                </div>
+
+                <div class="form-group">
+                    <label for="regPhone">Phone Number</label>
+                    <input type="tel" id="regPhone" placeholder="10-digit phone number" autocomplete="tel">
+                </div>
+
+                <div class="form-group">
+                    <label for="regLicense">License Number</label>
+                    <input type="text" id="regLicense" placeholder="Driving license number" autocomplete="off">
+                </div>
+
+                <div class="form-actions">
+                    <button id="registerBtn" class="btn btn-success" style="width: 100%;">
+                        <span class="material-symbols-outlined">person_add</span>
+                        Register
+                    </button>
+                </div>
+
+                <div class="form-toggle">
+                    Already have an account? <a href="#" id="showLogin">Login here</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
