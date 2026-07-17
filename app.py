@@ -926,6 +926,7 @@ def get_bus_stops_only(route_id):
         return []
     
     return [point for point in STOP_COORDS[route_id] if point.get('is_stop', True)]
+    
 def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None):
     """Calculate speed using last 5 locations over time span, with GPS speed fallback"""
     with bus_data_lock:
@@ -939,7 +940,7 @@ def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time,
             'time': current_time
         })
         
-        if len(history) > 5:
+        if len(history) > 20:
             history.pop(0)
         
         if len(history) < 2:
