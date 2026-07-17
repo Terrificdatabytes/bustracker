@@ -23,6 +23,7 @@ from threading import Lock
 import sys
 import requests
 import json
+bus_last_speed = {}
 # Import the model class
 try:
     from model_class import LinearRegressionNumpy
@@ -927,7 +928,7 @@ def get_bus_stops_only(route_id):
     
     return [point for point in STOP_COORDS[route_id] if point.get('is_stop', True)]
     
-def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None):
+'''def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None):
     """Calculate speed using last 5 locations over time span, with GPS speed fallback"""
     with bus_data_lock:
         if bus_id not in bus_speed_history:
@@ -961,7 +962,159 @@ def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time,
             # Throttle to 0-100 km/h range, no cap at 120
             return min(max(speed_kmh, 0), 100)
         
-        return 0.0
+        return 0.0 '''
+def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None, gps_speed=None):
+    """Calculate speed using last 20 locations with predicted speed fallback for surges"""
+    with bus_data_lock:
+        if bus_id not in bus_speed_history:
+            bus_speed_history[bus_id] = []
+        
+        history = bus_speed_history[bus_id]
+        
+        # Store previous computed speed for surge detection
+        if bus_id not in bus_last_speed:
+            bus_last_speed[bus_id] = 0.0
+        
+        history.append({
+            'lat': current_lat,
+            'lng': current_lng,
+            'time': current_time
+        })
+        
+        # Keep exactly 20 points for optimal GPS speed calculation
+        while len(history) > 20:
+            history.pop(0)
+        
+        if len(history) < 2:
+            return 0.0
+        
+        # ---- PRIMARY: Full-window speed calculation (20 points) ----
+        oldest = history[0]
+        newest = history[-1]
+        
+        distance_km = calculate_distance(
+            oldest['lat'], oldest['lng'],
+            newest['lat'], newest['lng'],
+            route_id
+        )
+        time_diff_seconds = (newest['time'] - oldest['time']).total_seconds()
+        
+        if time_diff_seconds <= 0.1:
+            return bus_last_speed[bus_id]
+        
+        raw_speed_kmh = (distance_km / time_diff_seconds) * 3600
+        
+        # ---- SURGE DETECTION ----
+        last_speed = bus_last_speed[bus_id]
+        # Max realistic acceleration for a bus: ~2.5 m/s² ≈ 9 km/h per second
+        MAX_ACCEL_KMH_PER_SEC = 9.0
+        
+        # Compute short-window (recent) time delta for surge check
+        recent_prev = history[-2]
+        recent_dt = (newest['time'] - recent_prev['time']).total_seconds()
+        max_allowed_change = MAX_ACCEL_KMH_PER_SEC * max(recent_dt, 1.0)
+        
+        speed_change = abs(raw_speed_kmh - last_speed)
+        surge_detected = (speed_change > max_allowed_change and recent_dt < 10.0)
+        
+        # ---- FALLBACK: Predicted GPS speed on surge ----
+        if surge_detected:
+            predicted_speed = predict_gps_speed(history, last_speed, gps_speed, route_id)
+            final_speed = predicted_speed
+        else:
+            # Smooth with weighted moving average using multiple sub-windows
+            final_speed = compute_weighted_speed(history, route_id, raw_speed_kmh)
+        
+        # Clamp to realistic bus range
+        final_speed = max(min(final_speed, 120.0), 0.0)
+        
+        bus_last_speed[bus_id] = final_speed
+        return final_speed
+
+
+def predict_gps_speed(history, last_speed, gps_speed=None, route_id=None):
+    """Predict speed using multiple methods when a surge is detected"""
+    predictions = []
+    weights = []
+    
+    # Method 1: GPS-reported speed (if available and realistic)
+    if gps_speed is not None and 0 <= gps_speed <= 120:
+        predictions.append(gps_speed)
+        weights.append(0.4)
+    
+    # Method 2: Linear extrapolation from recent trend (last 5 points)
+    if len(history) >= 5:
+        recent = history[-5:]
+        total_dist = 0.0
+        for i in range(1, len(recent)):
+            total_dist += calculate_distance(
+                recent[i-1]['lat'], recent[i-1]['lng'],
+                recent[i]['lat'], recent[i]['lng'],
+                route_id
+            )
+        total_time = (recent[-1]['time'] - recent[0]['time']).total_seconds()
+        if total_time > 0.1:
+            trend_speed = (total_dist / total_time) * 3600
+            if 0 <= trend_speed <= 120:
+                predictions.append(trend_speed)
+                weights.append(0.3)
+    
+    # Method 3: Mid-window speed (last 10 points) - noise-resistant
+    if len(history) >= 10:
+        mid = history[-10:]
+        mid_dist = calculate_distance(
+            mid[0]['lat'], mid[0]['lng'],
+            mid[-1]['lat'], mid[-1]['lng'],
+            route_id
+        )
+        mid_time = (mid[-1]['time'] - mid[0]['time']).total_seconds()
+        if mid_time > 0.1:
+            mid_speed = (mid_dist / mid_time) * 3600
+            if 0 <= mid_speed <= 120:
+                predictions.append(mid_speed)
+                weights.append(0.2)
+    
+    # Method 4: Last known speed as baseline (inertia)
+    predictions.append(last_speed)
+    weights.append(0.1)
+    
+    # Weighted average of all predictions
+    total_weight = sum(weights)
+    predicted = sum(p * w for p, w in zip(predictions, weights)) / total_weight
+    
+    return predicted
+
+
+def compute_weighted_speed(history, route_id, raw_speed):
+    """Compute smoothed speed using multiple sub-window averages"""
+    speeds = [(raw_speed, 0.5)]  # Full window has highest weight
+    
+    # Sub-window: last 10 points
+    if len(history) >= 10:
+        sub = history[-10:]
+        dist = calculate_distance(
+            sub[0]['lat'], sub[0]['lng'],
+            sub[-1]['lat'], sub[-1]['lng'],
+            route_id
+        )
+        dt = (sub[-1]['time'] - sub[0]['time']).total_seconds()
+        if dt > 0.1:
+            speeds.append(((dist / dt) * 3600, 0.3))
+    
+    # Sub-window: last 5 points (most recent trend)
+    if len(history) >= 5:
+        sub = history[-5:]
+        dist = calculate_distance(
+            sub[0]['lat'], sub[0]['lng'],
+            sub[-1]['lat'], sub[-1]['lng'],
+            route_id
+        )
+        dt = (sub[-1]['time'] - sub[0]['time']).total_seconds()
+        if dt > 0.1:
+            speeds.append(((dist / dt) * 3600, 0.2))
+    
+    total_w = sum(w for _, w in speeds)
+    return sum(s * w for s, w in speeds) / total_w
 def calculate_distance_from_start(route_id, bus_id, lat, lng, direction='forward'):
     """
     Calculate cumulative distance from start based on direction
