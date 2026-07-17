@@ -926,6 +926,148 @@
             font-weight: 500;
             min-height: 20px;
         }
+
+        /* ===== Home page image collage ===== */
+        .home-collage {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: 120px 120px;
+            gap: 10px;
+            margin: 24px 0;
+        }
+
+        .home-collage .collage-item {
+            position: relative;
+            border-radius: 14px;
+            overflow: hidden;
+            background: linear-gradient(135deg, var(--md-primary-container) 0%, var(--md-secondary-container) 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: var(--md-elevation-1);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .home-collage .collage-item:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: var(--md-elevation-3);
+        }
+
+        .home-collage .collage-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .home-collage .collage-item .placeholder-icon {
+            font-size: 32px;
+            color: var(--md-on-primary-container);
+            opacity: 0.6;
+        }
+
+        .home-collage .collage-item .placeholder-label {
+            position: absolute;
+            bottom: 6px;
+            left: 8px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--md-on-primary-container);
+            background: rgba(255, 255, 255, 0.55);
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+
+        /* Span sizes for a magazine-style collage layout */
+        .home-collage .item-1 { grid-column: 1 / 3; grid-row: 1 / 3; }
+        .home-collage .item-2 { grid-column: 3 / 5; grid-row: 1 / 2; }
+        .home-collage .item-3 { grid-column: 3 / 4; grid-row: 2 / 3; }
+        .home-collage .item-4 { grid-column: 4 / 5; grid-row: 2 / 3; }
+
+        @media (max-width: 768px) {
+            .home-collage {
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: 110px 110px 110px;
+            }
+            .home-collage .item-1 { grid-column: 1 / 3; grid-row: 1 / 2; }
+            .home-collage .item-2 { grid-column: 1 / 2; grid-row: 2 / 3; }
+            .home-collage .item-3 { grid-column: 2 / 3; grid-row: 2 / 3; }
+            .home-collage .item-4 { grid-column: 1 / 3; grid-row: 3 / 4; }
+        }
+
+        /* ===== Custom marquee ===== */
+        .marquee-wrap {
+            position: relative;
+            overflow: hidden;
+            margin: 16px 0 4px 0;
+            padding: 12px 0;
+            background: linear-gradient(90deg, var(--md-primary) 0%, var(--md-tertiary) 100%);
+            border-radius: 24px;
+            box-shadow: var(--md-elevation-1);
+        }
+
+        .marquee-wrap::before,
+        .marquee-wrap::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 40px;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        .marquee-wrap::before {
+            left: 0;
+            background: linear-gradient(90deg, var(--md-primary) 0%, transparent 100%);
+        }
+
+        .marquee-wrap::after {
+            right: 0;
+            background: linear-gradient(270deg, var(--md-tertiary) 0%, transparent 100%);
+        }
+
+        .marquee-track {
+            display: flex;
+            width: max-content;
+            animation: marquee-scroll 22s linear infinite;
+        }
+
+        .marquee-track:hover {
+            animation-play-state: paused;
+        }
+
+        .marquee-track span {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #fff;
+            font-weight: 500;
+            font-size: 14px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            padding: 0 32px;
+            position: relative;
+        }
+
+        .marquee-track span:not(:last-child)::after {
+            content: '•';
+            position: absolute;
+            right: 0;
+            opacity: 0.6;
+        }
+
+        @keyframes marquee-scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        @media (max-width: 768px) {
+            .marquee-track span {
+                font-size: 13px;
+                padding: 0 20px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -933,7 +1075,44 @@
         <div id="modeSelection" class="card">
             <h1>🚌 Bus Tracking System</h1>
             <h2 class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</h2>
-            
+
+            <!-- Custom Marquee -->
+            <div class="marquee-wrap">
+                <div class="marquee-track">
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">directions_bus</span> Live GPS tracking on every route</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">schedule</span> ML-powered ETA predictions</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">event_seat</span> Reserve your seat in advance</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">pan_tool</span> Mark yourself as waiting at a stop</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">map</span> Interactive live map for every bus</span>
+                    <!-- duplicated for seamless loop -->
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">directions_bus</span> Live GPS tracking on every route</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">schedule</span> ML-powered ETA predictions</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">event_seat</span> Reserve your seat in advance</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">pan_tool</span> Mark yourself as waiting at a stop</span>
+                    <span><span class="material-symbols-outlined" style="font-size:18px;">map</span> Interactive live map for every bus</span>
+                </div>
+            </div>
+
+            <!-- Image Placeholder Collage -->
+            <div class="home-collage">
+                <div class="collage-item item-1">
+                    <img src="https://placehold.co/600x600?text=Your+Photo" alt="Bus fleet photo placeholder" loading="lazy">
+                    <span class="placeholder-label">Fleet</span>
+                </div>
+                <div class="collage-item item-2">
+                    <img src="https://placehold.co/600x300?text=Your+Photo" alt="City route photo placeholder" loading="lazy">
+                    <span class="placeholder-label">Routes</span>
+                </div>
+                <div class="collage-item item-3">
+                    <img src="https://placehold.co/300x300?text=Your+Photo" alt="Driver photo placeholder" loading="lazy">
+                    <span class="placeholder-label">Drivers</span>
+                </div>
+                <div class="collage-item item-4">
+                    <img src="https://placehold.co/300x300?text=Your+Photo" alt="Passengers photo placeholder" loading="lazy">
+                    <span class="placeholder-label">Passengers</span>
+                </div>
+            </div>
+
             <div id="connectionStatus" class="status-indicator">
                 <div class="status-dot"></div>
                 <span id="statusText">Connecting...</span>
