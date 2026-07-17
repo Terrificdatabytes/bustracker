@@ -928,45 +928,71 @@
         }
 
         /* ===== Home page image collage ===== */
-        .home-collage {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            grid-template-rows: 120px 120px;
-            gap: 10px;
+        .home-collage-wrap {
             margin: 24px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
 
-        .home-collage .collage-item {
+        .home-collage-hero {
             position: relative;
             border-radius: 14px;
             overflow: hidden;
-            background: linear-gradient(135deg, var(--md-primary-container) 0%, var(--md-secondary-container) 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 100%;
+            height: 220px;
             box-shadow: var(--md-elevation-1);
-            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            background: linear-gradient(135deg, var(--md-primary-container) 0%, var(--md-secondary-container) 100%);
         }
 
-        .home-collage .collage-item:hover {
-            transform: translateY(-4px) scale(1.02);
-            box-shadow: var(--md-elevation-3);
-        }
-
-        .home-collage .collage-item img {
+        .home-collage-hero img {
             width: 100%;
             height: 100%;
             object-fit: cover;
             display: block;
         }
 
-        .home-collage .collage-item .placeholder-icon {
-            font-size: 32px;
+        .home-collage-hero .placeholder-label {
+            position: absolute;
+            bottom: 8px;
+            left: 10px;
+            font-size: 12px;
+            font-weight: 500;
             color: var(--md-on-primary-container);
-            opacity: 0.6;
+            background: rgba(255, 255, 255, 0.6);
+            padding: 3px 10px;
+            border-radius: 10px;
         }
 
-        .home-collage .collage-item .placeholder-label {
+        .home-collage-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .home-collage-row .collage-item {
+            position: relative;
+            border-radius: 14px;
+            overflow: hidden;
+            height: 130px;
+            background: linear-gradient(135deg, var(--md-primary-container) 0%, var(--md-secondary-container) 100%);
+            box-shadow: var(--md-elevation-1);
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+
+        .home-collage-row .collage-item:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: var(--md-elevation-3);
+        }
+
+        .home-collage-row .collage-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .home-collage-row .collage-item .placeholder-label {
             position: absolute;
             bottom: 6px;
             left: 8px;
@@ -978,21 +1004,40 @@
             border-radius: 10px;
         }
 
-        /* Span sizes for a magazine-style collage layout */
-        .home-collage .item-1 { grid-column: 1 / 3; grid-row: 1 / 3; }
-        .home-collage .item-2 { grid-column: 3 / 5; grid-row: 1 / 2; }
-        .home-collage .item-3 { grid-column: 3 / 4; grid-row: 2 / 3; }
-        .home-collage .item-4 { grid-column: 4 / 5; grid-row: 2 / 3; }
-
         @media (max-width: 768px) {
-            .home-collage {
-                grid-template-columns: repeat(2, 1fr);
-                grid-template-rows: 110px 110px 110px;
+            .home-collage-hero {
+                height: 160px;
             }
-            .home-collage .item-1 { grid-column: 1 / 3; grid-row: 1 / 2; }
-            .home-collage .item-2 { grid-column: 1 / 2; grid-row: 2 / 3; }
-            .home-collage .item-3 { grid-column: 2 / 3; grid-row: 2 / 3; }
-            .home-collage .item-4 { grid-column: 1 / 3; grid-row: 3 / 4; }
+            .home-collage-row {
+                grid-template-columns: 1fr;
+            }
+            .home-collage-row .collage-item {
+                height: 130px;
+            }
+        }
+
+        /* ===== IST Clock ===== */
+        .ist-clock {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin: 12px 0 4px 0;
+            padding: 10px 16px;
+            background: var(--md-surface-variant);
+            border-radius: 24px;
+            font-weight: 500;
+            color: var(--md-on-surface);
+        }
+
+        .ist-clock .material-symbols-outlined {
+            font-size: 20px;
+            color: var(--md-primary);
+        }
+
+        .ist-clock #istTime {
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.5px;
         }
 
         /* ===== Custom marquee ===== */
@@ -1076,6 +1121,13 @@
             <h1>🚌 Bus Tracking System</h1>
             <h2 class="subtitle">Real-time bus location tracking with ML-powered ETA predictions</h2>
 
+            <!-- IST Clock (milliseconds) -->
+            <div class="ist-clock">
+                <span class="material-symbols-outlined">schedule</span>
+                <span>IST:</span>
+                <span id="istTime">--:--:--.---</span>
+            </div>
+
             <!-- Custom Marquee -->
             <div class="marquee-wrap">
                 <div class="marquee-track">
@@ -1093,24 +1145,26 @@
                 </div>
             </div>
 
-            <!-- Image Placeholder Collage -->
-            <div class="home-collage">
-                <div class="collage-item item-1">
-                    <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/WhatsApp%20Image%202026-07-17%20at%209.32.12%20PM.jpeg?raw=true" alt="Bus fleet photo placeholder" loading="lazy">
-                    <span class="Realtime Timing Display">Fleet</span>
+            <!-- Image Collage: hero image on top, 3 images in a row below -->
+            <div class="home-collage-wrap">
+                <div class="home-collage-hero">
+                    <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/BusFleet.jpeg?raw=true" alt="Bus fleet photo" loading="lazy">
+                    <span class="placeholder-label">Fleet</span>
                 </div>
-                <div class="collage-item item-2">
-                    <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/IMG_20260130_165904403_HDR_AE~3.jpg?raw=true" alt="City route photo placeholder" loading="lazy">
-                    <span class="14BA AURCM BUS">Routes</span>
+                <div class="home-collage-row">
+                    <div class="collage-item">
+                        <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/14BA.jpg?raw=true" alt="14BA bus photo" loading="lazy">
+                        <span class="placeholder-label">14BA</span>
+                    </div>
+                    <div class="collage-item">
+                        <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/21CA.jpeg?raw=true" alt="21CA bus photo" loading="lazy">
+                        <span class="placeholder-label">21CA</span>
+                    </div>
+                    <div class="collage-item">
+                        <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/Realtime_Timings.jpeg?raw=true" alt="Realtime timings photo" loading="lazy">
+                        <span class="placeholder-label">Realtime Timings</span>
+                    </div>
                 </div>
-            
-            </div>
-            <div class="home-collage">
-                <div class="collage-item item-2">
-                    <img src="https://github.com/Terrificdatabytes/bustracker/blob/main/IMG_20260130_165904403_HDR_AE~3.jpg?raw=true" alt="City route photo placeholder" loading="lazy">
-                    <span class="placeholder-label">Routes</span>
-                </div>
-            
             </div>
 
             <div id="connectionStatus" class="status-indicator">
@@ -1504,6 +1558,31 @@
         </div>
     </div>
 
+    <script>
+        // Live IST clock with milliseconds
+        (function () {
+            var istEl = document.getElementById('istTime');
+            function pad(n, len) {
+                len = len || 2;
+                return String(n).padStart(len, '0');
+            }
+            function updateISTClock() {
+                if (!istEl) return;
+                // IST = UTC + 5:30, computed from UTC epoch so it's correct regardless of local timezone
+                var now = new Date();
+                var istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+                var istMs = now.getTime() + now.getTimezoneOffset() * 60 * 1000 + istOffsetMs;
+                var istDate = new Date(istMs);
+                var h = pad(istDate.getHours());
+                var m = pad(istDate.getMinutes());
+                var s = pad(istDate.getSeconds());
+                var ms = pad(istDate.getMilliseconds(), 3);
+                istEl.textContent = h + ':' + m + ':' + s + '.' + ms;
+            }
+            updateISTClock();
+            setInterval(updateISTClock, 10);
+        })();
+    </script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
