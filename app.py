@@ -854,8 +854,7 @@ def calculate_distance_with_waypoints(route_id, lat1, lon1, lat2, lon2):
     """
     Calculate distance following OSRM-generated waypoints
     """
-    current_lat = round(current_lat, 4)
-    current_lng = round(current_lng, 4)
+
     cache_key = f"{route_id}:{lat1:.5f},{lon1:.5f}_{lat2:.5f},{lon2:.5f}"
     if cache_key in distance_cache:
         return distance_cache[cache_key]
@@ -967,6 +966,8 @@ def get_bus_stops_only(route_id):
         return 0.0 '''
 def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None, gps_speed=None):
     """Calculate speed using last 20 locations with predicted speed fallback for surges"""
+    current_lat = round(current_lat, 4)
+    current_lng = round(current_lng, 4)
     with bus_data_lock:
         if bus_id not in bus_speed_history:
             bus_speed_history[bus_id] = []
