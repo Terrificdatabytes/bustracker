@@ -966,8 +966,6 @@ def get_bus_stops_only(route_id):
         return 0.0 '''
 def calculate_speed_from_history(bus_id, current_lat, current_lng, current_time, route_id=None, gps_speed=None):
     """Calculate speed using last 20 locations with predicted speed fallback for surges"""
-    current_lat = round(current_lat, 4)
-    current_lng = round(current_lng, 4)
     with bus_data_lock:
         if bus_id not in bus_speed_history:
             bus_speed_history[bus_id] = []
