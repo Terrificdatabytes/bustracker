@@ -854,6 +854,8 @@ def calculate_distance_with_waypoints(route_id, lat1, lon1, lat2, lon2):
     """
     Calculate distance following OSRM-generated waypoints
     """
+    current_lat = round(current_lat, 4)
+    current_lng = round(current_lng, 4)
     cache_key = f"{route_id}:{lat1:.5f},{lon1:.5f}_{lat2:.5f},{lon2:.5f}"
     if cache_key in distance_cache:
         return distance_cache[cache_key]
