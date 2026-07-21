@@ -20,6 +20,7 @@ let isAuthenticated = false;
 let isTracking = false;
 let wakeLock = null;
 let isBusFull = false;
+let gpsManager = null;
 
 // Store previous values for animation detection
 let previousValues = {
@@ -69,6 +70,184 @@ async function releaseWakeLock() {
         } catch (err) {
             console.error(`Wake Lock release error: ${err}`);
         }
+    }
+}
+
+// ============================================================
+// GPS Data Manager
+// ------------------------------------------------------------
+// Collects GPS from MULTIPLE readings (an initial burst + a
+// continuous watchPosition stream), VALIDATES each one (accuracy
+// + impossible-jump filters), and emits ONE correct, real-time
+// fix every SECOND. It also computes the speed locally every
+// second and updates the driver's speed card with no server wait.
+// ============================================================
+class GPSManager {
+    constructor(options = {}) {
+        // --- Tunable settings ---
+        this.maxAcceptableAccuracy = options.maxAcceptableAccuracy ?? 50;    // reject readings worse than this (meters)
+        this.minSamples            = options.minSamples ?? 3;                // good samples needed before first emit
+        this.emitIntervalMs        = options.emitIntervalMs ?? 1000;         // ⚡ second-to-second emit rate (real-time speed)
+        this.maxJumpSpeedKmh       = options.maxJumpSpeedKmh ?? 180;         // reject physically impossible jumps
+        this.minJumpDistanceKm     = options.minJumpDistanceKm ?? 0.03;      // ignore tiny jumps in speed check
+        this.fallbackMs            = options.fallbackMs ?? 10000;            // emit best-available if no good fix by then
+        this.speedWindow           = options.speedWindow ?? 5;               // fixes averaged for speed (smooth + live)
+        this.speedAlpha            = options.speedAlpha ?? 0.5;              // speed EMA (0..1) — higher = snappier
+
+        // --- Internal state ---
+        this.validSampleCount = 0;
+        this.listeners        = [];
+        this.lastEmitted      = null;     // last fix emitted (for jump check)
+        this.lastEmitTime     = 0;
+        this.startedAt        = Date.now();
+        this.hasEmitted       = false;
+        this.rejectedCount    = 0;
+        this.fixBuffer        = [];       // rolling fixes for second-to-second speed
+        this.smoothedSpeed    = null;     // EMA-smoothed speed (km/h)
+    }
+
+    /** Register a callback that receives ONLY validated fixes. */
+    onValidPosition(cb) {
+        if (typeof cb === 'function') this.listeners.push(cb);
+        return this;
+    }
+
+    /** Feed a raw geolocation reading in for validation + processing. */
+    addReading(position) {
+        if (!position || !position.coords) return false;
+
+        const { latitude, longitude, accuracy, speed } = position.coords;
+        const timestamp = position.timestamp || Date.now();
+        const acc = (typeof accuracy === 'number') ? accuracy : 9999;
+
+        // --- Filter 1: accuracy (reject jittery / weak fixes) ---
+        if (acc > this.maxAcceptableAccuracy) {
+            this.rejectedCount++;
+            console.warn(`⚠ GPS rejected — low accuracy (${acc.toFixed(0)} m)`);
+            return false;
+        }
+
+        // --- Filter 2: physically impossible jump (reject GPS "teleports") ---
+        if (this.lastEmitted) {
+            const dt = (timestamp - this.lastEmitted.timestamp) / 1000; // seconds
+            const d  = this._distance(this.lastEmitted.lat, this.lastEmitted.lng, latitude, longitude); // km
+            if (dt > 0 && d > this.minJumpDistanceKm) {
+                const spd = (d / dt) * 3600;
+                if (spd > this.maxJumpSpeedKmh) {
+                    this.rejectedCount++;
+                    console.warn(`⚠ GPS rejected — impossible jump (${spd.toFixed(0)} km/h, ${d.toFixed(3)} km)`);
+                    return false;
+                }
+            }
+        }
+
+        // Validated fix = the "one correct data" we send to the server
+        this.validSampleCount++;
+        const fix = {
+            lat: latitude,
+            lng: longitude,
+            accuracy: acc,
+            timestamp,
+            // Native device speed (m/s → km/h); null if the device didn't report it
+            nativeSpeed: (typeof speed === 'number' && speed >= 0) ? speed * 3.6 : null,
+            speed: 0  // filled in below (real-time, second-to-second)
+        };
+
+        // Rolling buffer used for smooth-but-live speed
+        this.fixBuffer.push(fix);
+        if (this.fixBuffer.length > this.speedWindow) this.fixBuffer.shift();
+
+        // --- Decide whether to emit now ---
+        const now           = Date.now();
+        const enoughSamples = this.validSampleCount >= this.minSamples;
+        const fallbackReady = !this.hasEmitted && (now - this.startedAt) > this.fallbackMs;
+        const throttleOk    = (now - this.lastEmitTime) >= this.emitIntervalMs;
+
+        if (!(enoughSamples || fallbackReady)) {
+            console.log(`⏳ Collecting GPS samples (${this.validSampleCount}/${this.minSamples})...`);
+            return false;
+        }
+        if (!throttleOk) return false;
+
+        // ⚡ Compute real-time speed on every emit (second-to-second)
+        fix.speed = this._computeSpeed();
+
+        this.lastEmitTime = now;
+        this.hasEmitted   = true;
+        this.lastEmitted  = { lat: fix.lat, lng: fix.lng, timestamp };
+
+        this.listeners.forEach(cb => cb(fix));
+        return true;
+    }
+
+    /** Quickly grab several samples up front to establish a good baseline. */
+    collectBurst(count = 3, intervalMs = 700) {
+        if (!navigator.geolocation) return;
+        let collected = 0;
+        const grab = () => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => { this.addReading(pos); next(); },
+                (err) => { console.warn('GPS burst error:', err.message); next(); },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        };
+        const next = () => {
+            collected++;
+            if (collected < count) setTimeout(grab, intervalMs);
+        };
+        grab();
+    }
+
+    /**
+     * Real-time speed (km/h) computed from the rolling fix buffer.
+     * distance/time over the window (smooth) blended with the device's native
+     * speed when available, then lightly EMA-smoothed. Recomputed every emit.
+     */
+    _computeSpeed() {
+        const buf = this.fixBuffer;
+        let instSpeed = 0;
+
+        if (buf.length >= 2) {
+            const first = buf[0];
+            const last  = buf[buf.length - 1];
+            const dt = (last.timestamp - first.timestamp) / 1000; // seconds
+            const d  = this._distance(first.lat, first.lng, last.lat, last.lng); // km
+            if (dt > 0) instSpeed = (d / dt) * 3600;
+        }
+
+        // Blend with instantaneous native GPS speed when the device reports it
+        const native = buf.length ? buf[buf.length - 1].nativeSpeed : null;
+        if (native !== null) {
+            instSpeed = instSpeed > 0 ? (instSpeed + native) / 2 : native;
+        }
+
+        this.smoothedSpeed = (this.smoothedSpeed === null)
+            ? instSpeed
+            : this.speedAlpha * instSpeed + (1 - this.speedAlpha) * this.smoothedSpeed;
+
+        return Math.max(0, this.smoothedSpeed);
+    }
+
+    /** Haversine distance in km. */
+    _distance(lat1, lon1, lat2, lon2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    reset() {
+        this.validSampleCount = 0;
+        this.lastEmitted = null;
+        this.lastEmitTime = 0;
+        this.startedAt = Date.now();
+        this.hasEmitted = false;
+        this.rejectedCount = 0;
+        this.fixBuffer = [];
+        this.smoothedSpeed = null;
     }
 }
 
@@ -396,8 +575,12 @@ function updatePassengerProgressBar(busData) {
 function handleBusInfoUpdate(data) {
     console.log('📊 Bus info update received:', data);
     
-    // Update driver panel with real-time info and animations
-    animateValueChange('busSpeed', data.speed, 'speedCard');
+    // The driver's own speed is driven locally every second (real-time) while
+    // sharing, so skip the (laggier) server value to avoid flicker. Use the
+    // server value only when not actively sharing.
+    if (!isSharing) {
+        animateValueChange('busSpeed', data.speed, 'speedCard');
+    }
     animateValueChange('nearestStopDriver', data.nearest_stop, 'stopCard');
     animateValueChange('distanceToStop', formatDistance(data.distance_to_stop), 'distanceCard');
     animateValueChange('etaToStop', data.eta_to_stop, 'etaCard');
@@ -761,23 +944,45 @@ document.getElementById('startSharing').addEventListener('click', async () => {
         console.log('✓ Screen will stay on while sharing location');
     }
     
+    // Initialize GPS Manager: collects MULTIPLE readings, validates them,
+    // and emits ONE correct fix every SECOND → real-time, second-to-second speed.
+    gpsManager = new GPSManager({
+        maxAcceptableAccuracy: 50,   // ignore readings worse than 50 m
+        minSamples: 3,               // 3 good samples before first emit
+        emitIntervalMs: 1000,        // ⚡ SECOND-TO-SECOND updates
+        speedWindow: 5,              // fixes averaged for a smooth-but-live speed
+        speedAlpha: 0.5              // speed smoothing (0..1) — higher = snappier
+    });
+
+    gpsManager.onValidPosition((fix) => {
+        const trafficLevel = parseFloat(document.getElementById('trafficLevel').value);
+        const speedKmh = Math.round(fix.speed || 0);
+
+        console.log(`✅ GPS → server: ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} | ${speedKmh} km/h (±${fix.accuracy.toFixed(0)} m)`);
+
+        // Send the validated fix + real-time speed to the server
+        socket.emit('bus_location', {
+            route_id: currentRoute,
+            bus_id: myBusId,
+            lat: fix.lat,
+            lng: fix.lng,
+            speed: fix.speed,            // ⚡ real-time speed (km/h), computed on the device
+            traffic_level: trafficLevel
+        });
+
+        // ⚡ SECOND-TO-SECOND speed on the driver's card — updated locally,
+        // with NO waiting for a server round-trip.
+        animateValueChange('busSpeed', speedKmh, 'speedCard');
+
+        updateBusMarker(myBusId, fix.lat, fix.lng, true);
+    });
+
+    console.log('🛰 Collecting initial GPS burst (multiple samples)...');
+    gpsManager.collectBurst(3, 700); // gather multiple samples up front
+
+    // Continuous stream of readings feeds the same manager
     trackingInterval = navigator.geolocation.watchPosition(
-        (position) => {
-            const { latitude, longitude } = position.coords;
-            const trafficLevel = parseFloat(document.getElementById('trafficLevel').value);
-            
-            console.log(`📍 Location update: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
-            
-            socket.emit('bus_location', {
-                route_id: currentRoute,
-                bus_id: myBusId,
-                lat: latitude,
-                lng: longitude,
-                traffic_level: trafficLevel
-            });
-            
-            updateBusMarker(myBusId, latitude, longitude, true);
-        },
+        (position) => gpsManager.addReading(position),
         (error) => {
             console.error('Geolocation error:', error);
             if (error.code === error.PERMISSION_DENIED) {
@@ -800,6 +1005,11 @@ document.getElementById('stopSharing').addEventListener('click', () => {
     if (trackingInterval) {
         navigator.geolocation.clearWatch(trackingInterval);
         trackingInterval = null;
+    }
+
+    if (gpsManager) {
+        gpsManager.reset();
+        gpsManager = null;
     }
     
     socket.emit('leave_route', { 
@@ -1351,6 +1561,7 @@ console.log('✓ Next stop display for passengers');
 console.log('✓ Distance progress bar for Driver & Passenger modes');
 console.log('✓ OSRM waypoint-based distance (99% accuracy)');
 console.log('✓ TradingView-style animations enabled');
+console.log('✓ Real-time second-to-second GPS + speed');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
