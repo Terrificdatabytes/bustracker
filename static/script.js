@@ -78,21 +78,20 @@ async function releaseWakeLock() {
 // ------------------------------------------------------------
 // Collects GPS from MULTIPLE readings (an initial burst + a
 // continuous watchPosition stream), VALIDATES each one (accuracy
-// + impossible-jump filters), and emits ONE correct, real-time
-// fix every SECOND. It also computes the speed locally every
-// second and updates the driver's speed card with no server wait.
+// + impossible-jump filters), and emits ONE correct fix every
+// SECOND to the server. The server computes the authoritative
+// speed from those fixes and echoes it back via 'bus_info_update'
+// every second → second-to-second speed for the driver.
 // ============================================================
 class GPSManager {
     constructor(options = {}) {
         // --- Tunable settings ---
         this.maxAcceptableAccuracy = options.maxAcceptableAccuracy ?? 50;    // reject readings worse than this (meters)
         this.minSamples            = options.minSamples ?? 3;                // good samples needed before first emit
-        this.emitIntervalMs        = options.emitIntervalMs ?? 1000;         // ⚡ second-to-second emit rate (real-time speed)
+        this.emitIntervalMs        = options.emitIntervalMs ?? 1000;         // ⚡ second-to-second emit rate
         this.maxJumpSpeedKmh       = options.maxJumpSpeedKmh ?? 180;         // reject physically impossible jumps
         this.minJumpDistanceKm     = options.minJumpDistanceKm ?? 0.03;      // ignore tiny jumps in speed check
         this.fallbackMs            = options.fallbackMs ?? 10000;            // emit best-available if no good fix by then
-        this.speedWindow           = options.speedWindow ?? 5;               // fixes averaged for speed (smooth + live)
-        this.speedAlpha            = options.speedAlpha ?? 0.5;              // speed EMA (0..1) — higher = snappier
 
         // --- Internal state ---
         this.validSampleCount = 0;
@@ -102,8 +101,6 @@ class GPSManager {
         this.startedAt        = Date.now();
         this.hasEmitted       = false;
         this.rejectedCount    = 0;
-        this.fixBuffer        = [];       // rolling fixes for second-to-second speed
-        this.smoothedSpeed    = null;     // EMA-smoothed speed (km/h)
     }
 
     /** Register a callback that receives ONLY validated fixes. */
@@ -148,14 +145,10 @@ class GPSManager {
             lng: longitude,
             accuracy: acc,
             timestamp,
-            // Native device speed (m/s → km/h); null if the device didn't report it
-            nativeSpeed: (typeof speed === 'number' && speed >= 0) ? speed * 3.6 : null,
-            speed: 0  // filled in below (real-time, second-to-second)
+            // Native device speed (m/s → km/h); null if the device didn't report it.
+            // Sent to the server as an optional surge fallback.
+            nativeSpeed: (typeof speed === 'number' && speed >= 0) ? speed * 3.6 : null
         };
-
-        // Rolling buffer used for smooth-but-live speed
-        this.fixBuffer.push(fix);
-        if (this.fixBuffer.length > this.speedWindow) this.fixBuffer.shift();
 
         // --- Decide whether to emit now ---
         const now           = Date.now();
@@ -168,9 +161,6 @@ class GPSManager {
             return false;
         }
         if (!throttleOk) return false;
-
-        // ⚡ Compute real-time speed on every emit (second-to-second)
-        fix.speed = this._computeSpeed();
 
         this.lastEmitTime = now;
         this.hasEmitted   = true;
@@ -198,36 +188,6 @@ class GPSManager {
         grab();
     }
 
-    /**
-     * Real-time speed (km/h) computed from the rolling fix buffer.
-     * distance/time over the window (smooth) blended with the device's native
-     * speed when available, then lightly EMA-smoothed. Recomputed every emit.
-     */
-    _computeSpeed() {
-        const buf = this.fixBuffer;
-        let instSpeed = 0;
-
-        if (buf.length >= 2) {
-            const first = buf[0];
-            const last  = buf[buf.length - 1];
-            const dt = (last.timestamp - first.timestamp) / 1000; // seconds
-            const d  = this._distance(first.lat, first.lng, last.lat, last.lng); // km
-            if (dt > 0) instSpeed = (d / dt) * 3600;
-        }
-
-        // Blend with instantaneous native GPS speed when the device reports it
-        const native = buf.length ? buf[buf.length - 1].nativeSpeed : null;
-        if (native !== null) {
-            instSpeed = instSpeed > 0 ? (instSpeed + native) / 2 : native;
-        }
-
-        this.smoothedSpeed = (this.smoothedSpeed === null)
-            ? instSpeed
-            : this.speedAlpha * instSpeed + (1 - this.speedAlpha) * this.smoothedSpeed;
-
-        return Math.max(0, this.smoothedSpeed);
-    }
-
     /** Haversine distance in km. */
     _distance(lat1, lon1, lat2, lon2) {
         const R = 6371;
@@ -246,8 +206,6 @@ class GPSManager {
         this.startedAt = Date.now();
         this.hasEmitted = false;
         this.rejectedCount = 0;
-        this.fixBuffer = [];
-        this.smoothedSpeed = null;
     }
 }
 
@@ -575,12 +533,10 @@ function updatePassengerProgressBar(busData) {
 function handleBusInfoUpdate(data) {
     console.log('📊 Bus info update received:', data);
     
-    // The driver's own speed is driven locally every second (real-time) while
-    // sharing, so skip the (laggier) server value to avoid flicker. Use the
-    // server value only when not actively sharing.
-    if (!isSharing) {
-        animateValueChange('busSpeed', data.speed, 'speedCard');
-    }
+    // ⚡ Speed is computed by the server from our 1-second position updates and
+    // echoed back here every second — authoritative and identical to what
+    // passengers see. (No local override, so it can't get stuck.)
+    animateValueChange('busSpeed', data.speed, 'speedCard');
     animateValueChange('nearestStopDriver', data.nearest_stop, 'stopCard');
     animateValueChange('distanceToStop', formatDistance(data.distance_to_stop), 'distanceCard');
     animateValueChange('etaToStop', data.eta_to_stop, 'etaCard');
@@ -944,35 +900,32 @@ document.getElementById('startSharing').addEventListener('click', async () => {
         console.log('✓ Screen will stay on while sharing location');
     }
     
-    // Initialize GPS Manager: collects MULTIPLE readings, validates them,
-    // and emits ONE correct fix every SECOND → real-time, second-to-second speed.
+    // Initialize GPS Manager: collects MULTIPLE readings, validates them, and
+    // emits ONE correct fix every SECOND → the server computes second-to-second
+    // speed and echoes it back via 'bus_info_update'.
     gpsManager = new GPSManager({
         maxAcceptableAccuracy: 50,   // ignore readings worse than 50 m
         minSamples: 3,               // 3 good samples before first emit
-        emitIntervalMs: 1000,        // ⚡ SECOND-TO-SECOND updates
-        speedWindow: 5,              // fixes averaged for a smooth-but-live speed
-        speedAlpha: 0.5              // speed smoothing (0..1) — higher = snappier
+        emitIntervalMs: 1000         // ⚡ SECOND-TO-SECOND updates
     });
 
     gpsManager.onValidPosition((fix) => {
         const trafficLevel = parseFloat(document.getElementById('trafficLevel').value);
-        const speedKmh = Math.round(fix.speed || 0);
 
-        console.log(`✅ GPS → server: ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} | ${speedKmh} km/h (±${fix.accuracy.toFixed(0)} m)`);
+        console.log(`✅ GPS → server: ${fix.lat.toFixed(6)}, ${fix.lng.toFixed(6)} | ${fix.nativeSpeed !== null ? fix.nativeSpeed.toFixed(1) + ' km/h native' : 'no native speed'} (±${fix.accuracy.toFixed(0)} m)`);
 
-        // Send the validated fix + real-time speed to the server
+        // Send the validated fix every second. The server computes the
+        // authoritative speed from the position history and sends it back in
+        // 'bus_info_update' (second-to-second). Native device speed is included
+        // as an optional surge fallback (null if the device doesn't report it).
         socket.emit('bus_location', {
             route_id: currentRoute,
             bus_id: myBusId,
             lat: fix.lat,
             lng: fix.lng,
-            speed: fix.speed,            // ⚡ real-time speed (km/h), computed on the device
+            speed: fix.nativeSpeed,       // native speed (km/h) or null — server uses it only during GPS surges
             traffic_level: trafficLevel
         });
-
-        // ⚡ SECOND-TO-SECOND speed on the driver's card — updated locally,
-        // with NO waiting for a server round-trip.
-        animateValueChange('busSpeed', speedKmh, 'speedCard');
 
         updateBusMarker(myBusId, fix.lat, fix.lng, true);
     });
@@ -1561,7 +1514,7 @@ console.log('✓ Next stop display for passengers');
 console.log('✓ Distance progress bar for Driver & Passenger modes');
 console.log('✓ OSRM waypoint-based distance (99% accuracy)');
 console.log('✓ TradingView-style animations enabled');
-console.log('✓ Real-time second-to-second GPS + speed');
+console.log('✓ Server-driven second-to-second speed (1 Hz position updates)');
 console.log('Script loaded at:', new Date().toLocaleTimeString());
 
 if (document.readyState === 'loading') {
