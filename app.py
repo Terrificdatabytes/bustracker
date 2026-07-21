@@ -1937,8 +1937,13 @@ def handle_bus_location(data):
     
     current_time = datetime.now()
     
+    # ✅ Use the device's native GPS speed (sent by the client) as an
+    #    instantaneous fallback during GPS surges. Already supported by
+    #    calculate_speed_from_history()/predict_gps_speed() — just wire it in.
+    gps_speed = data.get('speed')  # native device speed in km/h, or None
+    
     # Calculate speed using waypoint-based distance with GPS fallback
-    speed_kmh = calculate_speed_from_history(bus_id, lat, lng, current_time, route_id)
+    speed_kmh = calculate_speed_from_history(bus_id, lat, lng, current_time, route_id, gps_speed=gps_speed)
     
     # Detect current stop
     current_stop_info = detect_current_stop(route_id, lat, lng)
